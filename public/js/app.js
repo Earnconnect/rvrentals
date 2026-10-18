@@ -9,6 +9,7 @@
   const pad2 = n => String(n).padStart(2, '0');
   const todayStr = () => { const d = new Date(); return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; };
   const addDays = (s, n) => { const d = new Date(s + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+  const nightsBetween = (a, b) => Math.round((Date.parse(b + 'T00:00:00Z') - Date.parse(a + 'T00:00:00Z')) / 86400000);
   const addMonths = (first, m) => { const [y, mo] = first.split('-').map(Number); return new Date(Date.UTC(y, mo - 1 + m, 1)).toISOString().slice(0, 10); };
   const isDate = s => /^\d{4}-\d{2}-\d{2}$/.test(s || '');
   const fmtDate = (s, opts = { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }) => s ? new Date(s + 'T00:00:00').toLocaleDateString('en-US', opts) : '—';
@@ -206,13 +207,15 @@
   }
 
   // ---------------- calendar ----------------
-  function calendar(el, { booked = [], start, end, onChange }) {
+  function calendar(el, { booked = [], start, end, minNights = 1, onChange }) {
     const today = todayStr();
     let s = start || null, e = end || null;
     let view = (s || today).slice(0, 7) + '-01';
     const bookedNight = d => booked.some(b => d >= b.start && d < b.end);
     const free = (a, b) => { for (let d = a; d < b; d = addDays(d, 1)) if (bookedNight(d)) return false; return true; };
-    const canEnd = d => s && !e && d > s && free(s, d);
+    const canEnd = d => s && !e && d >= addDays(s, minNights) && free(s, d);
+    // While choosing a check-out date, nights inside the minimum stay can't be picked.
+    const tooShort = d => s && !e && d > s && d < addDays(s, minNights);
     function draw() {
       const [y, mo] = view.split('-').map(Number);
       const dim = new Date(Date.UTC(y, mo, 0)).getUTCDate();
@@ -221,8 +224,9 @@
       for (let day = 1; day <= dim; day++) {
         const d = `${y}-${pad2(mo)}-${pad2(day)}`;
         const bk = bookedNight(d), ce = canEnd(d);
-        const cls = ['cal-day', bk && 'booked', bk && ce && 'can-end', (d === s || d === e) && 'sel', s && e && d > s && d < e && 'in-range', d === today && 'today'].filter(Boolean).join(' ');
-        cells += `<button type="button" class="${cls}" data-d="${d}" ${d < today || (bk && !ce) ? 'disabled' : ''}>${day}</button>`;
+        const short = tooShort(d);
+        const cls = ['cal-day', bk && 'booked', bk && ce && 'can-end', (d === s || d === e) && 'sel', s && e && d > s && d < e && 'in-range', short && 'too-short', d === today && 'today'].filter(Boolean).join(' ');
+        cells += `<button type="button" class="${cls}" data-d="${d}" ${d < today || (bk && !ce) || short ? 'disabled' : ''}>${day}</button>`;
       }
       el.innerHTML = `<div class="cal">
         <div class="cal-head"><button type="button" data-step="-1" ${view <= today.slice(0, 7) + '-01' ? 'disabled' : ''} aria-label="Previous month">‹</button>
@@ -230,7 +234,7 @@
           <button type="button" data-step="1" aria-label="Next month">›</button></div>
         <div class="cal-grid">${cells}</div>
         <div class="cal-legend"><span><i style="background:var(--sun)"></i>Selected</span><span><i style="background:#e6dfd2"></i>Booked</span>
-          <span class="muted">${s && !e ? 'Now choose your check-out date' : 'Choose your check-in date'}</span></div></div>`;
+          <span class="muted">${s && !e ? `Now choose your check-out date${minNights > 1 ? ` (${minNights}-night minimum)` : ''}` : 'Choose your check-in date'}</span></div></div>`;
     }
     el.addEventListener('click', ev => {
       const step = ev.target.closest('[data-step]');
@@ -259,6 +263,17 @@
     if (st.start && st.start < todayStr()) st.start = st.end = null;
     const maxGuests = isRv ? item.sleeps : (S.max_site_guests || 8);
     const label = isRv ? ['Pickup', 'Return'] : ['Check-in', 'Check-out'];
+    // Keep the chosen dates in the address bar, so a refresh or a shared link keeps them.
+    const keepInUrl = () => {
+      const p = new URLSearchParams(location.search);
+      for (const [k, v] of [['start', st.start], ['end', st.end], ['guests', st.guests]]) v ? p.set(k, v) : p.delete(k);
+      const qs = p.toString();
+      history.replaceState(null, '', location.pathname + (qs ? '?' + qs : ''));
+    };
+    // Remember the guest's contact details on this device (and their notes while they change dates).
+    const GUEST_KEY = 'rf_guest';
+    const savedGuest = () => { try { return JSON.parse(localStorage.getItem(GUEST_KEY)) || {}; } catch { return {}; } };
+    const saveGuest = g => { try { localStorage.setItem(GUEST_KEY, JSON.stringify(g)); } catch {} };
 
     async function refreshQuote() {
       const box = $('#quoteBox', el), btn = $('#continueBtn', el);
@@ -292,6 +307,7 @@
           <div><span>${label[0]}</span><strong id="dStart">${st.start ? fmtDate(st.start, { month: 'short', day: 'numeric', year: 'numeric' }) : 'Add date'}</strong></div>
           <div><span>${label[1]}</span><strong id="dEnd">${st.end ? fmtDate(st.end, { month: 'short', day: 'numeric', year: 'numeric' }) : 'Add date'}</strong></div>
         </div>
+        <div class="date-meta"><span id="dNights"></span><button type="button" class="link-btn" id="clearDates">Clear dates</button></div>
         <div class="row" style="grid-template-columns:${isRv ? '1fr' : '1fr 1fr'}">
           <div class="field"><label for="guests">Guests</label><select id="guests">${Array.from({ length: maxGuests }, (_, i) => `<option ${i + 1 === st.guests ? 'selected' : ''}>${i + 1}</option>`).join('')}</select></div>
           ${isRv ? '' : `<div class="field"><label for="rigLen">Rig length (ft)</label><input id="rigLen" type="number" min="10" max="80" placeholder="e.g. 32" value="${esc(st.rig_length)}"></div>`}
@@ -308,16 +324,25 @@
         el.innerHTML = `<div class="alert alert-warn">This ${isRv ? 'RV is in for service' : 'site is closed for maintenance'} and can’t be booked right now.</div><a class="btn btn-dark btn-block" href="/${isRv ? 'rentals' : 'sites'}">See other options</a>`;
         return;
       }
-      calendar($('#cal', el), {
-        booked: item.booked, start: st.start, end: st.end,
+      const showDates = () => {
+        const n = st.start && st.end ? nightsBetween(st.start, st.end) : 0;
+        $('#dNights', el).textContent = n ? `${n} night${n > 1 ? 's' : ''}` : '';
+        $('#clearDates', el).hidden = !st.start;
+      };
+      const cal = calendar($('#cal', el), {
+        booked: item.booked, start: st.start, end: st.end, minNights: item.min_nights || 1,
         onChange(s, e) {
           st.start = s; st.end = e;
           $('#dStart', el).textContent = s ? fmtDate(s, { month: 'short', day: 'numeric', year: 'numeric' }) : 'Add date';
           $('#dEnd', el).textContent = e ? fmtDate(e, { month: 'short', day: 'numeric', year: 'numeric' }) : 'Add date';
+          showDates();
+          keepInUrl();
           refreshQuote();
         }
       });
-      $('#guests', el).onchange = ev => { st.guests = Number(ev.target.value); };
+      $('#clearDates', el).onclick = () => cal.clear();
+      showDates();
+      $('#guests', el).onchange = ev => { st.guests = Number(ev.target.value); keepInUrl(); };
       const rigCheck = () => {
         const len = Number(st.rig_length);
         $('#rigWarn', el).innerHTML = len > item.max_length ? `<div class="alert alert-error">Site ${esc(item.code)} fits rigs up to ${item.max_length} ft. <a href="/sites?len=${len}">Find a bigger site</a>.</div>` : '';
@@ -337,7 +362,7 @@
     }
 
     function drawDetails() {
-      const qt = st.quote;
+      const qt = st.quote, guest = savedGuest();
       el.innerHTML = `
         <button class="btn btn-ghost btn-sm" id="backBtn">← Change dates</button>
         <h3 style="margin:1rem 0 .25rem">Your trip</h3>
@@ -345,14 +370,19 @@
         <div class="quote-line total" style="margin:0 0 1rem;border:0;padding:0"><span>Total</span><span>${money2(qt.total)}</span></div>
         <form id="bookForm" novalidate>
           <div id="formErr"></div>
-          <div class="field"><label for="bName">Full name</label><input id="bName" name="name" autocomplete="name" required></div>
-          <div class="field"><label for="bEmail">Email</label><input id="bEmail" name="email" type="email" autocomplete="email" required></div>
-          <div class="field"><label for="bPhone">Mobile phone</label><input id="bPhone" name="phone" type="tel" autocomplete="tel" required></div>
-          <div class="field"><label for="bNotes">Notes for our team <span class="muted">(optional)</span></label><textarea id="bNotes" name="notes" placeholder="${isRv ? 'Delivery address, arrival time, questions…' : 'Arrival time, pets, slide-out side…'}"></textarea></div>
+          <div class="field"><label for="bName">Full name</label><input id="bName" name="name" autocomplete="name" required value="${esc(guest.name || '')}"></div>
+          <div class="field"><label for="bEmail">Email</label><input id="bEmail" name="email" type="email" autocomplete="email" required value="${esc(guest.email || '')}"></div>
+          <div class="field"><label for="bPhone">Mobile phone</label><input id="bPhone" name="phone" type="tel" autocomplete="tel" required value="${esc(guest.phone || '')}"></div>
+          <div class="field"><label for="bNotes">Notes for our team <span class="muted">(optional)</span></label><textarea id="bNotes" name="notes" placeholder="${isRv ? 'Delivery address, arrival time, questions…' : 'Arrival time, pets, slide-out side…'}">${esc(st.notes || '')}</textarea></div>
           <label class="check field"><input type="checkbox" name="agree" required> <span>I agree to the <a href="/legal/terms" target="_blank">Terms of Service</a> and <a href="/legal/cancellation" target="_blank">Cancellation Policy</a>, and have read the <a href="/legal/privacy" target="_blank">Privacy Policy</a>.${isRv ? ' The driver is 25+ with a valid license.' : ''}</span></label>
           <button class="btn btn-primary btn-block" type="submit">${S.payments_enabled ? `Continue to secure payment · ${money2(qt.total)}` : 'Request booking'}</button>
         </form>`;
       $('#backBtn', el).onclick = () => { st.step = 'dates'; drawDates(); };
+      $('#bookForm', el).oninput = ev => {
+        const f = formData(ev.currentTarget);
+        st.notes = f.notes;
+        saveGuest({ name: f.name, email: f.email, phone: f.phone });
+      };
       $('#bookForm', el).onsubmit = async ev => {
         ev.preventDefault();
         const f = formData(ev.target);
@@ -370,7 +400,7 @@
           else navigate(`/booking/${res.booking.code}?new=1`);
         } catch (err) {
           $('#formErr', el).innerHTML = `<div class="alert alert-error">${esc(err.message)}</div>`;
-          btn.disabled = false; btn.textContent = S.payments_enabled ? 'Continue to secure payment' : 'Request booking';
+          btn.disabled = false; btn.textContent = S.payments_enabled ? `Continue to secure payment · ${money2(qt.total)}` : 'Request booking';
         }
       };
     }
