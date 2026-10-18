@@ -1,0 +1,21 @@
+{
+  "name": "staycamp-rv-rentals",
+  "version": "1.0.0",
+  "description": "STAYCAMPRV LLC — RV rentals, RV site rentals, and RV & lot sales platform",
+  "type": "module",
+  "main": "app.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "reset": "node scripts/reset.js",
+    "reset:clean": "node scripts/reset.js --clean",
+    "db:copy": "node --disable-warning=ExperimentalWarning scripts/copy-to-turso.js"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "dependencies": {
+    "@libsql/client": "^0.18.0",
+    "express": "^5.3.0"
+  }
+}

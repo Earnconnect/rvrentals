@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs><linearGradient id="ks" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FBB867"/><stop offset="1" stop-color="#E4572E"/></linearGradient>
+    <clipPath id="kb"><rect x="10" y="27" width="39" height="17" rx="8.5"/></clipPath></defs>
+  <rect width="64" height="64" rx="16" fill="#0E3B36"/>
+  <path d="M11.84 25.21L7.62 23.67 M16.00 19.28L13.11 15.83 M25.00 16.00L25.00 11.50 M34.00 19.28L36.89 15.83 M38.16 25.21L42.38 23.67" stroke="#F7A55B" stroke-width="2.4" stroke-linecap="round"/>
+  <circle cx="25" cy="30" r="11" fill="url(#ks)"/>
+  <rect x="10" y="27" width="39" height="17" rx="8.5" fill="#F6F1E7"/>
+  <g clip-path="url(#kb)"><rect x="10" y="38.2" width="39" height="2.2" fill="#E4572E"/></g>
+  <rect x="15.5" y="30.5" width="8.5" height="5" rx="2.2" fill="#0E3B36"/>
+  <rect x="36" y="30.5" width="8.5" height="5" rx="2.2" fill="#0E3B36"/>
+  <rect x="27.5" y="30.5" width="5" height="11.5" rx="1.6" fill="#0E3B36"/>
+  <path d="M49 40.5l6 3.5" stroke="#F6F1E7" stroke-width="2" stroke-linecap="round"/>
+  <circle cx="23" cy="45" r="4.4" fill="#0E3B36" stroke="#F6F1E7" stroke-width="2"/>
+  <rect x="8" y="49.6" width="48" height="2" rx="1" fill="#F6F1E7"/>
+  <path d="M14 54.6h12M32 54.6h17M21 58.6h20" stroke="#F7A55B" stroke-width="1.8" stroke-linecap="round" opacity=".75"/>
+</svg>

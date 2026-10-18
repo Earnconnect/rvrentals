@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!--SEO_HEAD-->
+  <meta name="theme-color" content="#0E3B36">
+  <link rel="icon" type="image/svg+xml" href="/img/logo-mark.svg">
+  <link rel="icon" type="image/png" sizes="192x192" href="/img/icon-192.png">
+  <link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
+  <link rel="manifest" href="/site.webmanifest">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+  <div class="topbar">
+    <div class="container">
+      <span id="topHours"></span>
+      <span class="topbar-links"><a id="topPhone" href="#"></a><a href="#" onclick="window.RFChat && RFChat.open(); return false;">Live chat</a><a href="/manage">Manage booking</a></span>
+    </div>
+  </div>
+  <header class="site-header">
+    <div class="container">
+      <a class="brand" href="/" id="brand" aria-label="STAYCAMPRV home"></a>
+      <button class="nav-toggle" id="navToggle" aria-label="Open menu" aria-expanded="false"><span></span><span></span><span></span></button>
+      <nav class="nav" id="nav">
+        <a href="/rentals" data-nav="rentals">RV Rentals</a>
+        <a href="/sites" data-nav="sites">RV Sites</a>
+        <a href="/sales" data-nav="sales">For Sale</a>
+        <a href="/locations" data-nav="locations">Locations</a>
+        <a href="/policies" data-nav="policies">FAQ</a>
+        <a href="/contact" data-nav="contact">Contact</a>
+        <a class="btn btn-primary btn-sm nav-cta" href="/rentals">Book now</a>
+      </nav>
+    </div>
+  </header>
+  <main id="app"><!--SEO_BODY--></main>
+  <footer class="site-footer">
+    <div class="container">
+      <div class="foot-cta">
+        <div><h3>Ready when you are.</h3><p>Talk to a real person about rentals, sites or sales.</p></div>
+        <div class="foot-cta-actions"><a class="btn btn-primary" id="footCall" href="#">Call us</a><a class="btn btn-outline-light" href="#" onclick="window.RFChat && RFChat.open(); return false;">Chat with us</a></div>
+      </div>
+      <div class="foot-grid">
+        <div>
+          <div class="brand brand-light" id="footBrand"></div>
+          <p id="footTagline" class="small foot-tag"></p>
+        </div>
+        <div><h4>Explore</h4><ul>
+          <li><a href="/rentals">RV Rentals</a></li><li><a href="/sites">RV Sites & Campgrounds</a></li>
+          <li><a href="/sales?category=rv">RVs for Sale</a></li><li><a href="/sales?category=lot">RV Lots for Sale</a></li><li><a href="/locations">Locations</a></li>
+        </ul></div>
+        <div><h4>Guests</h4><ul>
+          <li><a href="/manage">Manage Booking</a></li><li><a href="#" onclick="window.RFChat && RFChat.open(); return false;">Live Chat Support</a></li><li><a href="/reviews">Guest Reviews</a></li><li><a href="/policies">Policies & FAQ</a></li><li><a href="/contact">Contact Us</a></li>
+        </ul></div>
+        <div><h4>Visit</h4><ul class="small" id="footContact"></ul></div>
+      </div>
+      <div class="foot-bottom">
+        <span>© <span id="year"></span> STAYCAMPRV LLC. All rights reserved.</span>
+        <nav class="foot-legal" aria-label="Legal"><a href="/legal/terms">Terms</a><a href="/legal/privacy">Privacy</a><a href="/legal/cancellation">Cancellations</a><a href="/legal/accessibility">Accessibility</a><a href="/admin">Staff login</a></nav>
+      </div>
+    </div>
+  </footer>
+  <script src="/js/art.js"></script>
+  <script src="/js/regions.js"></script>
+  <script src="/js/legal.js"></script>
+  <script src="/js/app.js"></script>
+  <script src="/js/chat.js"></script>
+</body>
+</html>
