@@ -9,7 +9,8 @@
     "dev": "node --watch server.js",
     "reset": "node scripts/reset.js",
     "reset:clean": "node scripts/reset.js --clean",
-    "db:copy": "node --disable-warning=ExperimentalWarning scripts/copy-to-turso.js"
+    "db:copy": "node --disable-warning=ExperimentalWarning scripts/copy-to-turso.js",
+    "email:preview": "node scripts/preview-emails.js"
   },
   "engines": {
     "node": ">=22.13"

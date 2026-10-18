@@ -7,3 +7,6 @@ try { process.loadEnvFile(path.join(path.dirname(fileURLToPath(import.meta.url))
 // "Today" for bookings is computed in this time zone. Vercel servers run on UTC, so default to the headquarters' zone there.
 if (process.env.APP_TIMEZONE) process.env.TZ = process.env.APP_TIMEZONE;
 else if (process.env.VERCEL) process.env.TZ = 'America/New_York';
+
+// Links and photos in emails need the public address. On Vercel, fall back to the production domain.
+if (!process.env.BASE_URL && process.env.VERCEL_PROJECT_PRODUCTION_URL) process.env.BASE_URL = `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`;

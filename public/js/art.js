@@ -68,8 +68,9 @@
   const logo = (size = 40) => `<img class="logo-mark" src="/img/logo-mark.svg" width="${size}" height="${size}" alt="">`;
   const lockup = (light = false) => `<img class="brand-logo" src="/img/${light ? 'logo-light' : 'logo'}.svg" width="288" height="64" alt="STAYCAMPRV">`;
 
-  window.RFArt = {
-    logo, lockup,
+  // globalThis is window in the browser; the server loads this file too (for photos in emails).
+  globalThis.RFArt = {
+    logo, lockup, keyFor,
     photo: (key, alt = '', opts) => img(key, alt, opts),
     url: (key, large = true) => src(key, large),
     rv: (type, _color, opts) => img(rvKey(type, type), type || 'RV', opts),
