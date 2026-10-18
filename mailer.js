@@ -84,7 +84,7 @@ function layout({ preheader = '', title, intro = '', body = '', cta, footerNote 
   </td></tr>
   <tr><td style="padding:22px 28px 28px">
     ${footerNote ? `<p style="margin:0 0 14px;font-size:13px;line-height:1.6;color:#5C6866">${footerNote}</p>` : ''}
-    <p style="margin:0;font-size:13px;line-height:1.6;color:#5C6866">Questions? Reply to this email or call <a href="tel:${esc(s.phone)}" style="color:#17695D">${esc(s.phone)}</a>.</p>
+    <p style="margin:0;font-size:13px;line-height:1.6;color:#5C6866">Questions? Reply to this email${s.support_email ? ` or write to <a href="mailto:${esc(s.support_email)}" style="color:#17695D">${esc(s.support_email)}</a>` : ''}.</p>
   </td></tr>
   <tr><td style="background:#F7F4EE;padding:18px 28px;font-size:12px;line-height:1.6;color:#7a8583;border-top:1px solid #EFEAE1">
     ${esc(s.business_name)} · ${esc(s.address)}<br>${esc(s.hours)}<br>
@@ -193,7 +193,7 @@ export function contactAck({ name, email, subject, message }) {
 export function chatOfflineAck(chat, message) {
   return sendMail({
     kind: 'chat_ack', to: chat.email, subject: 'We got your message — we’ll be in touch',
-    html: layout({ title: `Thanks, ${chat.name.split(' ')[0]}!`, intro: `Our team was away when you messaged us. We’ll reply as soon as we’re back${chat.callback ? ` and call you at ${esc(chat.phone)}` : ''}.`,
+    html: layout({ title: `Thanks, ${chat.name.split(' ')[0]}!`, intro: `Our team was away when you messaged us. We’ll reply by email as soon as we’re back.`,
       body: quote(message) + p('You can reply to this email or continue the conversation in the chat on our website.'), cta: { label: 'Visit our website', url: BASE_URL } }),
     text: `Thanks, ${chat.name}! Our team was away when you messaged us. We'll reply as soon as we're back.\n\nYour message: ${message}`
   });

@@ -6,7 +6,7 @@
 
   const contactBlock = S => `<address class="legal-contact">
     <strong>${esc(S.business_name || 'STAYCAMPRV LLC')}</strong><br>${esc(S.address)}<br>
-    Phone: <a href="tel:${esc(S.phone)}">${esc(S.phone)}</a><br>Email: <a href="mailto:${esc(S.email)}">${esc(S.email)}</a></address>`;
+    Bookings: <a href="mailto:${esc(S.email)}">${esc(S.email)}</a>${S.support_email ? `<br>Support: <a href="mailto:${esc(S.support_email)}">${esc(S.support_email)}</a>` : ''}</address>`;
 
   const docs = [
     {
@@ -49,13 +49,13 @@
           ['Information we collect', `<ul>
             <li><strong>Booking information:</strong> your name, email, phone number, travel dates, number of guests, RV or rig details (length and type), add-ons, notes you give us, and booking and payment status.</li>
             <li><strong>Inquiries and messages:</strong> information you submit through the contact form, sales inquiry, offer, tour or financing request forms, such as your name, email, phone, offer amount, preferred date and message.</li>
-            <li><strong>Live chat:</strong> your name, email, optional phone number, chat topic, whether you asked for a call back, the page you started the chat from, and the messages exchanged with our team.</li>
+            <li><strong>Live chat:</strong> your name, email, chat topic, the page you started the chat from, and the messages exchanged with our team.</li>
             <li><strong>Payment information:</strong> if online payment is available, card payments are processed by Stripe. Your card number is entered on Stripe’s secure page and is never sent to or stored on our servers. We receive the payment status and amount.</li>
             <li><strong>Technical information:</strong> like most websites, our server receives your IP address and basic request information when you visit. We use it to operate and secure the website (for example, to limit repeated form submissions).</li>
             <li><strong>At pickup or check-in:</strong> we may ask to see a driver’s license, proof of insurance and vehicle details to complete your rental or stay.</li></ul>`],
           ['How we use your information', `<ul>
             <li>To take, confirm, manage and support your booking, and to collect payment and security deposits.</li>
-            <li>To answer your questions by chat, email or phone, including calling you back when you ask us to.</li>
+            <li>To answer your questions by chat or email.</li>
             <li>To respond to sales inquiries, offers, tours and financing requests.</li>
             <li>To operate, secure and improve the website and our services, prevent fraud, and keep records required by law (such as tax records).</li>
             <li>To enforce our terms and protect the safety of guests, staff and property.</li></ul>
@@ -86,7 +86,7 @@
       summary: 'How to cancel or change a booking, how refunds work, and how security deposits are handled.',
       sections: S => [
         ['Our cancellation policy', `<p class="legal-callout">${esc(S.cancellation_policy)}</p><p>This policy applies to both RV rentals and RV site reservations unless your booking confirmation says otherwise.</p>`],
-        ['How to cancel', `<p>You can cancel online up to your arrival or pickup date: go to <a href="/manage">Manage Booking</a>, enter your confirmation code and email, and choose “Cancel booking.” You can also cancel by phone at <a href="tel:${esc(S.phone)}">${esc(S.phone)}</a> or by email at <a href="mailto:${esc(S.email)}">${esc(S.email)}</a>. The time we receive your cancellation determines which refund tier applies.</p>`],
+        ['How to cancel', `<p>You can cancel online up to your arrival or pickup date: go to <a href="/manage">Manage Booking</a>, enter your confirmation code and email, and choose “Cancel booking.” You can also cancel by email at <a href="mailto:${esc(S.email)}">${esc(S.email)}</a>. The time we receive your cancellation determines which refund tier applies.</p>`],
         ['Changing dates', `<p>To change dates, RV or site, use “Request a change” on your booking page or contact us. Changes depend on availability and may change the price. A change that shortens your stay inside a non-refundable window is treated as a partial cancellation.</p>`],
         ['Refunds', `<ul><li>Refunds are issued to the original payment method. For card payments, allow 5–7 business days after we process the refund for it to appear, depending on your bank.</li>
           <li>Taxes are refunded in proportion to the refunded amount.</li>
@@ -109,7 +109,7 @@
           <li>The layout adapts to phones and tablets, and animations are reduced when your device asks for reduced motion.</li></ul>`],
         ['Known limitations', `<p>Some photos and third-party content may not yet have full descriptions, and older PDFs or documents we send by email may not be fully accessible. We are working to improve these.</p>`],
         ['At the resort', `<p>If you need an accessible site, help with RV orientation, or other accommodations during your stay, tell us when you book or contact us, and we will do our best to help.</p>`],
-        ['Feedback and help', `<p>If something on this website is hard to use, or you would like help making a booking, please contact us. We will respond and help you complete your booking by phone or email.</p>${contactBlock(S)}`]
+        ['Feedback and help', `<p>If something on this website is hard to use, or you would like help making a booking, please contact us. We will respond and help you complete your booking by email or live chat.</p>${contactBlock(S)}`]
       ]
     }
   ];

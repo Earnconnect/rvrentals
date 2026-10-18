@@ -23,7 +23,7 @@
     plug: '<path d="M9 2v6M15 2v6M6 8h12v3a6 6 0 01-12 0zM12 17v5"/>',
     key: '<circle cx="8" cy="15" r="4"/><path d="M10.8 12.2L20 3M16 7l3 3M14 9l2 2"/>',
     lock: '<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/>',
-    phone: '<path d="M5 4h4l2 5-2.5 1.5a11 11 0 005 5L15 13l5 2v4a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2"/>',
+    mail: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>',
     calendar: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/>',
     arrow: '<path d="M5 12h14M13 6l6 6-6 6"/>'
   };
@@ -33,7 +33,7 @@
   const assurance = () => `<div class="assurance">
     <div>${icon('lock')}Secure booking · instant confirmation code</div>
     <div>${icon('calendar')}Taxes and fees shown before you book</div>
-    <div>${icon('phone')}Questions? <a href="tel:${esc(S.phone)}">${esc(S.phone)}</a></div></div>`;
+    <div>${icon('mail')}Questions? <a href="mailto:${esc(S.email)}">${esc(S.email)}</a></div></div>`;
 
   function gallery(kind, item) {
     const g = window.RFArt.gallery(kind, item);
@@ -789,7 +789,7 @@
             <div class="field"><label>Message</label><textarea name="message" placeholder="Questions, trade-in details, timeline…"></textarea></div>
             <button class="btn btn-primary btn-block">Send</button>
           </form>
-          <p class="small muted center" style="margin:.75rem 0 0">Or call <a href="tel:${esc(S.phone)}">${esc(S.phone)}</a></p>
+          <p class="small muted center" style="margin:.75rem 0 0">Or email <a href="mailto:${esc(S.email)}">${esc(S.email)}</a></p>
         </div></aside>
       </div></div>`;
     gal.bind(app);
@@ -843,7 +843,7 @@
     const next = {
       pending: S.payments_enabled && b.payment_status !== 'paid' ? 'Your dates are held. Complete payment to confirm, or our team will contact you within a few hours.' : 'Your request is in! Our team will review it and confirm by email or phone within a few business hours.',
       confirmed: `You’re all set. ${isRv ? `Pickup is at ${S.rv_pickup_time} on ${fmtDate(b.start_date)} at ${S.address}. Bring your driver’s license, proof of insurance, and the security deposit.` : `Check-in begins at ${S.check_in_time}. Head to the office when you arrive and we’ll guide you to site ${b.item?.code || ''}.`}`,
-      checked_in: 'Enjoy your stay! Call us anytime if you need anything.',
+      checked_in: 'Enjoy your stay! Message us anytime if you need anything.',
       completed: 'Thanks for traveling with STAYCAMPRV. We hope to see you again soon!',
       cancelled: 'This booking has been cancelled. Any refund due is processed according to our cancellation policy within 5–7 business days.'
     }[b.status];
@@ -967,14 +967,14 @@
           </div>
           <div class="panel" style="margin-top:1.25rem">
           <h3>Our locations</h3>
-          <ul class="loc-list">${R.locationsFrom(S).map(l => `<li><a href="/locations/${l.slug}">${esc(l.name)}</a><span class="muted small">${roleLabel(l)}${l.city ? ` · ${esc(l.city)}` : ''}${l.phone ? ` · <a href="tel:${esc(l.phone)}">${esc(l.phone)}</a>` : ''}</span></li>`).join('')}</ul>
+          <ul class="loc-list">${R.locationsFrom(S).map(l => `<li><a href="/locations/${l.slug}">${esc(l.name)}</a><span class="muted small">${roleLabel(l)}${l.city ? ` · ${esc(l.city)}` : ''}</span></li>`).join('')}</ul>
           </div>
           <div class="panel" style="margin-top:1.25rem">
           <h3>Main office</h3>
           <dl class="dl" style="grid-template-columns:1fr">
             <dt>Address</dt><dd>${esc(S.address)}</dd>
-            <dt>Phone</dt><dd><a href="tel:${esc(S.phone)}">${esc(S.phone)}</a></dd>
-            <dt>Email</dt><dd><a href="mailto:${esc(S.email)}">${esc(S.email)}</a></dd>
+            <dt>Bookings</dt><dd><a href="mailto:${esc(S.email)}">${esc(S.email)}</a></dd>
+            ${S.support_email ? `<dt>Support</dt><dd><a href="mailto:${esc(S.support_email)}">${esc(S.support_email)}</a></dd>` : ''}
             <dt>Office hours</dt><dd>${esc(S.hours)}</dd>
           </dl>
           <a class="btn btn-ghost btn-block" style="margin-top:1rem" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(S.address)}">Open in Maps</a>
@@ -1057,7 +1057,7 @@
         <div class="grid">${locs.map(l => locationCard(l, counts)).join('')}</div>
         ${hq ? `<div class="panel hq-panel"><div><span class="eyebrow">Main office · ${esc(hq.name)}</span><h3>${esc(S.business_name)}</h3>
           <p class="muted" style="margin:0">${esc(S.address)}<br>${esc(S.hours)}</p></div>
-          <div class="hq-actions"><a class="btn btn-primary" href="tel:${esc(S.phone)}">Call ${esc(S.phone)}</a><a class="btn btn-ghost" href="mailto:${esc(S.email)}">${esc(S.email)}</a></div></div>` : ''}
+          <div class="hq-actions"><a class="btn btn-primary" href="mailto:${esc(S.email)}">${esc(S.email)}</a>${S.support_email ? `<a class="btn btn-ghost" href="mailto:${esc(S.support_email)}">${esc(S.support_email)}</a>` : ''}</div></div>` : ''}
         <div style="height:3rem"></div>
       </div>`;
   }
@@ -1066,7 +1066,6 @@
     if (!l) { app.innerHTML = `<div class="container loading"><h2>Location not found</h2><a class="btn btn-dark" href="/locations">All locations</a></div>`; return; }
     const { rvs, camps } = await locationCounts();
     const rs = rvs.filter(r => r.status === 'active' && R.rvState(r, S) === l.code), cs = camps.filter(c => R.campState(c) === l.code);
-    const phone = l.phone || S.phone;
     app.innerHTML = `<section class="page-banner">${photo(l.photo, `${l.name} RV travel`, { large: true, eager: true })}
         <div class="container"><span class="eyebrow">${roleLabel(l)}${l.city ? ` · ${esc(l.city)}, ${l.code}` : ''}</span><h1>${esc(S.business_name.replace(/,?\s+LLC$/i, ''))} in ${esc(l.name)}</h1>
         ${l.blurb ? `<p>${esc(l.blurb)}</p>` : ''}</div></section>
@@ -1079,8 +1078,8 @@
         ${!rs.length && !cs.length ? `<div class="panel trip-panel"><h2 style="margin-top:0">Planning a trip in ${esc(l.name)}?</h2>
           <p class="muted">Tell us your dates, group size and where you're headed. Our ${l.role === 'Branch' ? `${esc(l.name)} branch` : 'team'} will help you find the right RV, delivery option or campsite.</p>
           <div class="band-actions"><a class="btn btn-primary" href="/contact?subject=${encodeURIComponent('Trip in ' + l.name)}">Plan my trip</a><button class="btn btn-ghost" type="button" id="locChat">Chat with us</button></div></div>` : ''}
-        <div class="band" style="margin-top:3rem"><div><h2>Talk to our ${esc(l.name)} team</h2><p>${phone ? `Call <strong>${esc(phone)}</strong> or e` : 'E'}mail <strong>${esc(S.email)}</strong>. We reply within one business day.</p></div>
-          <div class="band-actions">${phone ? `<a class="btn btn-primary" href="tel:${esc(phone)}">Call us</a>` : ''}<a class="btn btn-outline-light" href="/contact?subject=${encodeURIComponent(l.name + ' question')}">Send a message</a></div></div>
+        <div class="band" style="margin-top:3rem"><div><h2>Talk to our ${esc(l.name)} team</h2><p>Email <strong>${esc(S.email)}</strong> about bookings${S.support_email ? ` or <strong>${esc(S.support_email)}</strong> for anything else` : ''}. We reply within one business day.</p></div>
+          <div class="band-actions"><a class="btn btn-primary" href="mailto:${esc(S.email)}">Email us</a><a class="btn btn-outline-light" href="/contact?subject=${encodeURIComponent(l.name + ' question')}">Send a message</a></div></div>
         <div style="height:3rem"></div>
       </div>`;
     const lc = $('#locChat'); if (lc) lc.onclick = () => window.RFChat?.open();
@@ -1101,16 +1100,16 @@
   async function boot() {
     $('#navToggle').onclick = () => { const n = $('#nav'); n.classList.toggle('open'); $('#navToggle').setAttribute('aria-expanded', n.classList.contains('open')); };
     $('#year').textContent = new Date().getFullYear();
-    try { S = await api('/settings'); } catch { S = {}; }
+    // The server sends the settings with the page; fetch them only if they're missing.
+    S = window.RF_SETTINGS || await api('/settings').catch(() => ({}));
     $('#brand').innerHTML = window.RFArt.lockup();
     $('#footBrand').innerHTML = window.RFArt.lockup(true);
     $('#topHours').textContent = S.hours ? `Office hours: ${S.hours}` : '';
-    $('#topPhone').textContent = S.phone || '';
-    $('#topPhone').href = `tel:${S.phone || ''}`;
-    $('#footCall').textContent = S.phone ? `Call ${S.phone}` : 'Call us';
-    $('#footCall').href = `tel:${S.phone || ''}`;
+    $('#topEmail').textContent = S.email || '';
+    $('#topEmail').href = `mailto:${S.email || ''}`;
+    $('#footEmail').href = `mailto:${S.email || ''}`;
     $('#footTagline').textContent = S.tagline || '';
-    $('#footContact').innerHTML = `<li>${esc(S.address)}</li><li><a href="tel:${esc(S.phone)}">${esc(S.phone)}</a></li><li><a href="mailto:${esc(S.email)}">${esc(S.email)}</a></li><li>${esc(S.hours)}</li>`;
+    $('#footContact').innerHTML = `<li>${esc(S.address)}</li><li>Bookings: <a href="mailto:${esc(S.email)}">${esc(S.email)}</a></li>${S.support_email ? `<li>Support: <a href="mailto:${esc(S.support_email)}">${esc(S.support_email)}</a></li>` : ''}<li>${esc(S.hours)}</li>`;
     render();
   }
   boot();

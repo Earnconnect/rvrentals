@@ -55,8 +55,8 @@ if (SERVERLESS) {
     next();
   });
 }
-app.get('/robots.txt', (req, res) => res.type('text/plain').send(robotsTxt()));
-app.get('/sitemap.xml', async (req, res) => res.type('application/xml').send(await sitemapXml()));
+app.get('/robots.txt', (req, res) => res.set('Cache-Control', 'public, s-maxage=3600').type('text/plain').send(robotsTxt()));
+app.get('/sitemap.xml', async (req, res) => res.set('Cache-Control', 'public, s-maxage=3600').type('application/xml').send(await sitemapXml()));
 
 // ---------- helpers ----------
 class HttpError extends Error { constructor(status, message) { super(message); this.status = status; } }
@@ -271,10 +271,21 @@ function setSessionCookie(res, token, maxAge) {
 // =================== PUBLIC API ===================
 const api = express.Router();
 
-api.get('/settings', async (req, res) => {
-  const { notify_email, google_site_verification, ...pub } = getSettings();
-  res.json({ ...pub, payments_enabled: Boolean(STRIPE_KEY) });
+// Settings the website may see. The business no longer takes calls, so no phone number is ever published.
+function publicSettings() {
+  const { notify_email, google_site_verification, phone, ...pub } = getSettings();
+  pub.locations = (pub.locations || []).map(({ phone, ...l }) => l);
+  return { ...pub, payments_enabled: Boolean(STRIPE_KEY) };
+}
+// Public listings change rarely, so let Vercel's CDN serve them for a short while instead of running the function
+// (and querying the database) for every visitor. Bookings always re-check availability on the server.
+const CDN_CACHE = 'public, max-age=0, s-maxage=30, stale-while-revalidate=300';
+api.get(['/settings', '/rvs', '/rvs/:id', '/campgrounds', '/campgrounds/:id', '/lots', '/lots/:id', '/sales', '/sales/:id', '/testimonials', '/seo'], (req, res, next) => {
+  res.setHeader('Cache-Control', CDN_CACHE);
+  next();
 });
+
+api.get('/settings', (req, res) => res.json(publicSettings()));
 
 api.get('/rvs', async (req, res) => {
   const { start, end } = req.query;
@@ -502,7 +513,7 @@ async function addChatMessage(chatId, sender, body) {
   await db.prepare(`UPDATE chats SET ${bump}, updated_at = datetime('now')${sender === 'guest' ? ", status = 'open'" : ''} WHERE id = ?`).run(chatId);
   return db.prepare(`SELECT ${CHAT_MSG_COLS} FROM chat_messages WHERE id = ?`).get(r.lastInsertRowid);
 }
-const chatStatus = async () => { const st = getSettings(); return { online: await staffOnline(), hours: st.hours, phone: st.phone, email: st.email }; };
+const chatStatus = async () => { const st = getSettings(); return { online: await staffOnline(), hours: st.hours, email: st.email, support_email: st.support_email }; };
 
 api.get('/seo', async (req, res) => { const u = new URL(str(req.query.path, 500) || '/', 'http://x'); res.json(seoJson(await seoFor(u.pathname, u.search.slice(1)))); });
 
@@ -530,7 +541,7 @@ api.post('/chat/start', rateLimit(5, 600000), async (req, res) => {
   }
   await addChatMessage(id, 'system', online
     ? `Thanks, ${first}! You're connected to the STAYCAMPRV team. Someone will reply here in a moment.`
-    : `Thanks, ${first}! Our team is away right now (office hours: ${st.hours}). We'll reply right here and by email at ${email}${callback ? `, and call you at ${phone}` : ''} as soon as we're back.`);
+    : `Thanks, ${first}! Our team is away right now (office hours: ${st.hours}). We'll reply right here and by email at ${email} as soon as we're back.`);
   res.status(201).json({ token, ...await chatStatus(), messages: await db.prepare(`SELECT ${CHAT_MSG_COLS} FROM chat_messages WHERE chat_id = ? ORDER BY id`).all(id) });
 });
 
@@ -959,10 +970,11 @@ admin.put('/settings', async (req, res) => {
       const R = globalThis.RFRegions;
       v = v.filter(l => R.STATES[String(l.state || '').toUpperCase()]).map(l => ({
         state: String(l.state).toUpperCase(), role: R.ROLES.includes(l.role) ? l.role : 'Location',
-        city: str(l.city, 80), phone: str(l.phone, 40), blurb: str(l.blurb, 400)
+        city: str(l.city, 80), blurb: str(l.blurb, 400)
       }));
       if (new Set(v.map(l => l.state)).size !== v.length) throw new HttpError(400, 'Each state can only be listed once in Locations.');
     }
+    if (key === 'support_email') { v = str(v, 160).toLowerCase(); if (v && !EMAIL_RE.test(v)) throw new HttpError(400, 'Support email is not a valid address.'); }
     if (key === 'notify_email') { v = str(v, 160).toLowerCase(); if (v && !EMAIL_RE.test(v)) throw new HttpError(400, 'Staff notification email is not a valid address.'); }
     if (typeof v === 'string') v = str(v, 5000);
     await setSetting(key, v);
@@ -996,7 +1008,12 @@ app.use('/api', (req, res) => res.status(404).json({ error: 'Not found.' }));
 const PAGE_TEMPLATE = fs.readFileSync(path.join(__dirname, 'views', 'index.html'), 'utf8');
 app.get(/^\/(?!api\/|uploads\/|admin)[^.]*$/, async (req, res) => {
   const seo = await seoFor(req.path, new URLSearchParams(req.query).toString());
-  res.status(seo.status).type('html').send(renderPage(PAGE_TEMPLATE, seo));
+  // Ship the site settings with the page so the app can draw it immediately, without another request first.
+  let head = `<script>window.RF_SETTINGS = ${JSON.stringify(publicSettings()).replaceAll("<", String.fromCharCode(92) + "u003c")};</script>`;
+  // Start downloading the home page's hero photo right away, instead of after the scripts run.
+  if (req.path === '/') head += '\n  <link rel="preload" as="image" href="/img/photos/hero-lakeside.jpg" fetchpriority="high">';
+  if (seo.status === 200 && !/^\/(manage|booking)(\/|$)/.test(req.path)) res.setHeader('Cache-Control', CDN_CACHE);
+  res.status(seo.status).type('html').send(renderPage(PAGE_TEMPLATE, seo).replace('</head>', `  ${head}\n</head>`));
 });
 
 app.use((err, req, res, next) => {

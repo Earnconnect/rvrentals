@@ -510,7 +510,7 @@
     const area = (k, l) => `<div class="field full"><label>${l}</label><textarea name="${k}">${esc(s[k])}</textarea></div>`;
     $('#view').innerHTML = `<form id="sForm" class="admin-grid" style="grid-template-columns:minmax(0, 1fr)">
       <div class="panel"><h3>Business</h3><div class="form-grid">
-        ${text('business_name', 'Business name')}${text('tagline', 'Tagline')}${text('phone', 'Phone')}${text('email', 'Email', 'email')}
+        ${text('business_name', 'Business name')}${text('tagline', 'Tagline')}${text('email', 'Bookings email', 'email')}${text('support_email', 'Support email', 'email')}
         ${text('address', 'Address')}${text('hours', 'Office hours')}${text('hero_title', 'Home page headline')}${text('hero_subtitle', 'Home page subheadline')}
       </div></div>
       <div class="panel"><h3>Locations</h3>
@@ -555,7 +555,7 @@
     const getLoc = repeater($('#locRep'), [
       { key: 'state', type: 'select', options: Object.keys(RG.STATES).map(c => [c, RG.STATES[c]]), width: '150px' },
       { key: 'role', type: 'select', options: RG.ROLES.map(r => [r, r]), width: '140px' },
-      { key: 'city', label: 'City (optional)' }, { key: 'phone', label: 'Phone (optional)', width: '140px' },
+      { key: 'city', label: 'City (optional)' },
       { key: 'blurb', label: 'Short description for the website', type: 'textarea', width: '2fr' }], s.locations || []);
     const getFaq = repeater($('#faqRep'), [{ key: 'q', label: 'Question' }, { key: 'a', label: 'Answer', type: 'textarea', width: '2fr' }], s.faq || []);
     $('#sForm').onsubmit = async ev => {

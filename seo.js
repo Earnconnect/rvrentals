@@ -29,13 +29,13 @@ function organization(b) {
   return {
     '@context': 'https://schema.org', '@type': 'LocalBusiness', '@id': `${BASE_URL()}/#business`,
     name: b.full, url: `${BASE_URL()}/`, logo: abs('/img/icon-512.png'), image: abs('/img/photos/hero-lakeside.jpg'),
-    description: s.tagline || undefined, email: s.email || undefined, telephone: s.phone || undefined,
+    description: s.tagline || undefined, email: s.email || undefined,
     address: s.address ? { '@type': 'PostalAddress', streetAddress: s.address, addressRegion: R.stateOf(s.address) || undefined, addressCountry: 'US' } : undefined,
     priceRange: '$$',
     areaServed: R.locationsFrom(s).map(l => ({ '@type': 'State', name: l.name })),
     department: R.locationsFrom(s).filter(l => !l.hq).map(l => ({
       '@type': 'LocalBusiness', name: `${b.short} ${l.name}${l.role === 'Branch' ? ' Branch' : ''}`, url: `${BASE_URL()}/locations/${l.slug}`,
-      telephone: l.phone || s.phone || undefined, address: { '@type': 'PostalAddress', addressLocality: l.city || undefined, addressRegion: l.code, addressCountry: 'US' }
+      email: s.email || undefined, address: { '@type': 'PostalAddress', addressLocality: l.city || undefined, addressRegion: l.code, addressCountry: 'US' }
     }))
   };
 }
@@ -142,7 +142,7 @@ export async function seoFor(pathname, search = '') {
       jsonld: [breadcrumbs([['RV sites', '/sites'], [c.name, `/sites/park/${c.id}`]]), {
         '@context': 'https://schema.org', '@type': ['Campground', 'RVPark'], name: c.name, description: c.description, image: photo(c, 'camp'), url: base.canonical,
         address: { '@type': 'PostalAddress', streetAddress: c.address || undefined, addressLocality: (c.location || '').split(',')[0] || undefined, addressRegion: R.campState(c) || undefined, addressCountry: 'US' },
-        telephone: s.phone || undefined, priceRange: price, petsAllowed: amen.some(a => /pet|dog/i.test(a)) || undefined,
+        email: s.email || undefined, priceRange: price, petsAllowed: amen.some(a => /pet|dog/i.test(a)) || undefined,
         amenityFeature: amen.map(a => ({ '@type': 'LocationFeatureSpecification', name: a, value: true })),
         containsPlace: l.map(x => ({ '@type': 'CampingPitch', name: `Site ${x.code}`, url: `${BASE_URL()}/sites/${x.id}` }))
       }],
@@ -220,7 +220,7 @@ export async function seoFor(pathname, search = '') {
       description: clip(`${b.short} in ${l.city ? l.city + ', ' : ''}${l.name}: ${rs.length ? `${rs.length} RV rental${rs.length === 1 ? '' : 's'}` : 'RV rentals'}${cs.length ? `, ${cs.length} campground${cs.length === 1 ? '' : 's'}` : ''} and RV sales. ${l.blurb || ''}`, 160),
       jsonld: [breadcrumbs([['Locations', '/locations'], [l.name, `/locations/${l.slug}`]]), {
         '@context': 'https://schema.org', '@type': 'LocalBusiness', name: `${b.short} ${l.name}${l.role === 'Branch' ? ' Branch' : ''}`, url: base.canonical,
-        image: abs(`/img/photos/${l.photo}.jpg`), telephone: l.phone || s.phone || undefined, email: s.email || undefined, parentOrganization: { '@id': `${BASE_URL()}/#business` },
+        image: abs(`/img/photos/${l.photo}.jpg`), email: s.email || undefined, parentOrganization: { '@id': `${BASE_URL()}/#business` },
         address: l.hq && s.address ? { '@type': 'PostalAddress', streetAddress: s.address, addressRegion: l.code, addressCountry: 'US' } : { '@type': 'PostalAddress', addressLocality: l.city || undefined, addressRegion: l.code, addressCountry: 'US' },
         areaServed: { '@type': 'State', name: l.name }
       }],
@@ -250,9 +250,9 @@ export async function seoFor(pathname, search = '') {
   if (p === '/contact') {
     return {
       ...base, title: withBrand('Contact Us — RV Rentals, Sites & Sales', b),
-      description: `Questions about an RV rental, an RV site or a listing? Call ${s.phone || 'us'}, email ${s.email || 'us'}, or chat with our team.`,
+      description: `Questions about an RV rental, an RV site or a listing? Email ${s.email || 'us'}${s.support_email ? ` or ${s.support_email}` : ''}, or chat with our team.`,
       jsonld: [breadcrumbs([['Contact', '/contact']]), organization(b)],
-      body: section(`Contact ${b.short}`, `${s.address || ''} · ${s.phone || ''} · ${s.email || ''} · ${s.hours || ''}`)
+      body: section(`Contact ${b.short}`, [s.address, s.email && `Bookings: ${s.email}`, s.support_email && `Support: ${s.support_email}`, s.hours].filter(Boolean).join(' · '))
     };
   }
   if ((m = p.match(/^\/legal(?:\/([a-z-]+))?$/))) {

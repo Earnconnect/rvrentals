@@ -1,4 +1,4 @@
-// STAYCAMPRV live chat widget: instant answers from the FAQ, live chat with staff, and offline messages / call-back requests.
+// STAYCAMPRV live chat widget: instant answers from the FAQ, live chat with staff, and offline messages answered by email.
 (() => {
   const KEY = 'rf_chat';
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -69,8 +69,8 @@
       </div>
       <div class="chat-quick">
         <a href="/manage" data-close>${ICON.cal}<span>Manage my booking</span></a>
-        ${st.settings.phone ? `<a href="tel:${esc(st.settings.phone)}">${ICON.phone}<span>Call ${esc(st.settings.phone)}</span></a>` : ''}
-        ${st.settings.email ? `<a href="mailto:${esc(st.settings.email)}">${ICON.mail}<span>Email us</span></a>` : ''}
+        ${st.settings.email ? `<a href="mailto:${esc(st.settings.email)}">${ICON.mail}<span>Email bookings</span></a>` : ''}
+        ${st.settings.support_email ? `<a href="mailto:${esc(st.settings.support_email)}">${ICON.mail}<span>Email support</span></a>` : ''}
       </div>
       ${faq.length ? `<div class="chat-section-label">Instant answers</div>
         <div class="chat-faq">${faq.map((f, i) => `<button type="button" data-faq="${i}">${esc(f.q)}</button>`).join('')}</div>
@@ -82,15 +82,12 @@
         <div class="chat-row"><input name="name" placeholder="Your name" autocomplete="name" required><input name="email" type="email" placeholder="Email" autocomplete="email" required></div>
         <select name="topic" aria-label="Topic">${['', 'RV rental', 'RV site / resort stay', 'Buying an RV or lot', 'An existing booking', 'Something else'].map(t => `<option value="${t}" ${t === topic ? 'selected' : ''}>${t || 'What can we help with?'}</option>`).join('')}</select>
         <textarea name="message" rows="3" placeholder="How can we help?" required></textarea>
-        <label class="chat-check"><input type="checkbox" name="callback"> Request a call back</label>
-        <input name="phone" type="tel" placeholder="Phone number (for a call back)" autocomplete="tel" class="chat-phone hidden">
         <button class="btn btn-primary btn-block" type="submit">${st.online ? 'Start chat' : 'Send message'}</button>
         <p class="chat-fine">We reply here and by email. By starting a chat you agree we can contact you about your request. <a href="/legal/privacy" data-close>Privacy Policy</a></p>
       </form>`;
     foot.innerHTML = '';
     foot.classList.add('hidden');
     const form = $('.chat-start');
-    form.callback.onchange = () => { form.phone.classList.toggle('hidden', !form.callback.checked); if (form.callback.checked) form.phone.focus(); };
     body.querySelectorAll('[data-faq]').forEach(b => b.onclick = () => {
       const i = Number(b.dataset.faq);
       st.answers = [...st.answers.filter(x => x !== i), i];
@@ -105,7 +102,7 @@
       const btn = form.querySelector('button[type=submit]');
       btn.disabled = true; btn.textContent = 'Sending…';
       try {
-        const r = await call('/chat/start', { method: 'POST', body: { ...f, callback: !!f.callback, page: location.pathname + location.search } });
+        const r = await call('/chat/start', { method: 'POST', body: { ...f, page: location.pathname + location.search } });
         st.session = { token: r.token, name: f.name };
         save(st.session);
         st.online = r.online; st.messages = r.messages; st.lastId = r.messages.at(-1)?.id || 0;
@@ -218,7 +215,7 @@
   window.RFChat = { open: topic => toggle(true, topic) };
 
   (async () => {
-    try { st.settings = await call('/settings'); } catch {}
+    st.settings = window.RF_SETTINGS || await call('/settings').catch(() => st.settings);
     await poll();
   })();
 })();

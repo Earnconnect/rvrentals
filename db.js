@@ -245,8 +245,9 @@ export function verifyPassword(pw, stored) {
 export const DEFAULT_SETTINGS = {
   business_name: 'STAYCAMPRV LLC',
   tagline: 'RV rentals, campgrounds & RV sales across Florida, Arizona, Utah and Colorado',
-  phone: '(407) 555-0142',
+  phone: '',
   email: 'bookings@staycamp.online',
+  support_email: 'support@staycamp.online',
   notify_email: '',
   // Where the business operates. role: Headquarters | Location | Branch. City and phone are optional.
   locations: [
