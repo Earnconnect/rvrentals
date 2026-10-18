@@ -92,6 +92,8 @@
     [/^\/legal(?:\/([a-z-]+))?$/, legal]
   ];
   let lastPath = null;
+  // Every page opens at the top: don't let the browser restore an old scroll position on reload or Back.
+  if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
   async function render() {
     const path = location.pathname.replace(/\/+$/, '') || '/';
     const query = location.search.slice(1);
@@ -109,6 +111,8 @@
       if (m) {
         try { await fn(m.slice(1), q); }
         catch (e) { app.innerHTML = `<div class="container loading"><h2>Something went wrong</h2><p>${esc(e.message)}</p><a class="btn btn-dark" href="/">Back home</a></div>`; }
+        // The page's height changes once it renders, so make sure it starts at the top (links to a #section are left alone).
+        if ((first || !samePage) && !location.hash) window.scrollTo(0, 0);
         return;
       }
     }
