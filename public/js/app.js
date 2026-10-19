@@ -318,7 +318,7 @@
           <div>${addons.map(a => `<div class="addon"><label><input type="checkbox" value="${esc(a.id)}" ${st.addons.has(a.id) ? 'checked' : ''}> ${esc(a.name)}</label><span class="small muted">${money(a.price)}${a.per === 'night' ? '/night' : ''}</span></div>`).join('')}</div>` : ''}
         <div class="quote" id="quoteBox"></div>
         <button class="btn btn-primary btn-block" id="continueBtn" style="margin-top:1rem" disabled>Continue to book</button>
-        <p class="small muted center" style="margin:.6rem 0 0">You won’t be charged ${S.payments_enabled ? 'until you check out securely' : 'online — pay at check-in'}.</p>
+        <p class="small muted center" style="margin:.6rem 0 0">${S.payments_enabled ? 'You won’t be charged until you check out securely.' : 'No payment online. We’ll send payment details when we confirm.'}</p>
         ${assurance()}`;
       if (item.status !== 'active') {
         el.innerHTML = `<div class="alert alert-warn">This ${isRv ? 'RV is in for service' : 'site is closed for maintenance'} and can’t be booked right now.</div><a class="btn btn-dark btn-block" href="/${isRv ? 'rentals' : 'sites'}">See other options</a>`;
@@ -871,7 +871,8 @@
     const canCancel = ['pending', 'confirmed'].includes(b.status) && b.start_date > todayStr();
     const balance = Math.max(0, b.total - b.amount_paid);
     const next = {
-      pending: S.payments_enabled && b.payment_status !== 'paid' ? 'Your dates are held. Complete payment to confirm, or our team will contact you within a few hours.' : 'Your request is in! Our team will review it and confirm by email or phone within a few business hours.',
+      pending: S.payments_enabled && b.payment_status !== 'paid' ? 'Your dates are held. Complete payment to confirm, or our team will contact you within a few hours.'
+        : `Your request is in! Our team will review it and confirm by email within a few business hours.${b.hold_until ? ` Your dates are held until ${fmtDate(b.hold_until)}: please pay or reply to our email by then to keep them.` : ''}`,
       confirmed: `You’re all set. ${isRv ? `Pickup is at ${S.rv_pickup_time} on ${fmtDate(b.start_date)} at ${S.address}. Bring your driver’s license, proof of insurance, and the security deposit.` : `Check-in begins at ${S.check_in_time}. Head to the office when you arrive and we’ll guide you to site ${b.item?.code || ''}.`}`,
       checked_in: 'Enjoy your stay! Message us anytime if you need anything.',
       completed: 'Thanks for traveling with STAYCAMPRV. We hope to see you again soon!',
@@ -912,6 +913,9 @@
           ${b.deposit ? `<div class="quote-line small muted"><span>Refundable deposit at pickup</span><span>${money2(b.deposit)}</span></div>` : ''}
         </div>
       </div>
+      ${!S.payments_enabled && balance > 0 && b.status !== 'cancelled' && (S.payment_instructions || '').trim() ? `<div class="panel pay-info">
+        <h3>How to pay</h3><p style="margin:0;white-space:pre-line">${esc(S.payment_instructions.trim())}</p>
+        <p class="small muted" style="margin:.75rem 0 0">Balance due: <strong>${money2(balance)}</strong>. Questions about payment? Email <a href="mailto:${esc(S.email)}">${esc(S.email)}</a>.</p></div>` : ''}
       ${b.can_review ? `<div class="panel review-panel no-print" id="review">
         <h3 style="margin-top:0">How was your ${isRv ? 'trip' : 'stay'}?</h3>
         <p class="muted small">Share a few words about ${esc(b.item_name)}. Reviews are checked by our team before they appear on the website.</p>

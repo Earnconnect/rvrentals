@@ -13,7 +13,6 @@
   const pill = s => `<span class="status-pill st-${esc(s)}">${esc(String(s ?? '').replace('_', ' '))}</span>`;
   const formData = form => Object.fromEntries(new FormData(form).entries());
   const BOOKING_STATUSES = ['pending', 'confirmed', 'checked_in', 'completed', 'cancelled'];
-  const PAY_STATUSES = ['unpaid', 'partial', 'paid', 'refunded'];
   let SCHEMA = null, USER = null, counts = {};
 
   async function api(path, { method = 'GET', body, raw = false } = {}) {
@@ -207,44 +206,86 @@
           ${b.fees ? `<div class="quote-line"><span>Cleaning fee</span><span>${money2(b.fees)}</span></div>` : ''}
           <div class="quote-line"><span>Tax</span><span>${money2(b.tax)}</span></div>
           <div class="quote-line total"><span>Total</span><span>${money2(b.total)}</span></div>
-          <div class="quote-line"><span>Balance</span><span>${money2(balance)}</span></div>
+          <div class="quote-line"><span>Paid</span><span>${money2(b.amount_paid)}</span></div>
+          <div class="quote-line" style="font-weight:700"><span>Balance due</span><span>${money2(balance)}</span></div>
           ${b.deposit ? `<div class="quote-line small muted"><span>Security deposit</span><span>${money2(b.deposit)}</span></div>` : ''}
+          <p style="margin:.6rem 0 0">${pill(b.payment_status)}</p>
         </div>
       </div>
+      <div class="pay-box" id="payBox"><div class="small muted">Loading payments…</div></div>
       <form id="bkForm" style="margin-top:1.25rem">
         <div class="row">
           <div class="field"><label>Status</label><select name="status">${BOOKING_STATUSES.map(s => `<option value="${s}" ${s === b.status ? 'selected' : ''}>${s.replace('_', ' ')}</option>`).join('')}</select></div>
-          <div class="field"><label>Payment</label><select name="payment_status">${PAY_STATUSES.map(s => `<option ${s === b.payment_status ? 'selected' : ''}>${s}</option>`).join('')}</select></div>
-          <div class="field"><label>Amount paid ($)</label><input name="amount_paid" type="number" step="0.01" min="0" value="${b.amount_paid}"></div>
         </div>
         <div class="field"><label>Internal notes</label><textarea name="admin_notes">${esc(b.admin_notes || '')}</textarea></div>
-        <label class="check"><input type="checkbox" name="notify" checked> <span>Email ${esc(b.customer_email)} when I confirm, cancel or mark this booking paid</span></label>
+        <label class="check"><input type="checkbox" name="notify" checked> <span>Email ${esc(b.customer_email)} when I confirm or cancel this booking</span></label>
       </form>`,
       `<div class="left" style="display:flex;gap:.4rem;flex-wrap:wrap">
         ${b.status === 'pending' ? '<button class="btn btn-ghost btn-sm" data-quick="confirmed">Confirm</button>' : ''}
         ${['pending', 'confirmed'].includes(b.status) ? '<button class="btn btn-ghost btn-sm" data-quick="checked_in">Check in</button>' : ''}
         ${b.status === 'checked_in' ? '<button class="btn btn-ghost btn-sm" data-quick="completed">Check out</button>' : ''}
-        ${b.payment_status !== 'paid' ? '<button class="btn btn-ghost btn-sm" data-pay>Mark paid in full</button>' : ''}
         <button class="btn btn-ghost btn-sm" data-resend>✉ Resend ${b.status === 'cancelled' ? 'cancellation' : 'confirmation'}</button>
       </div><button class="btn btn-ghost" data-close>Close</button><button class="btn btn-primary" id="bkSave">Save</button>`);
     const f = $('#bkForm', m.el);
     const save = async () => {
       const d = formData(f);
       try {
-        await api('/bookings/' + b.id, { method: 'PATCH', body: { ...d, notify: Boolean(d.notify), amount_paid: Number(d.amount_paid) } });
+        await api('/bookings/' + b.id, { method: 'PATCH', body: { ...d, notify: Boolean(d.notify) } });
         m.close(); toast('Booking updated'); refreshCounts(); after?.();
       } catch (e) { toast(e.message, true); }
     };
     $('#bkSave', m.el).onclick = save;
     $$('[data-quick]', m.el).forEach(btn => btn.onclick = () => { f.status.value = btn.dataset.quick; save(); });
-    const pay = $('[data-pay]', m.el);
-    if (pay) pay.onclick = () => { f.payment_status.value = 'paid'; f.amount_paid.value = b.total; save(); };
+    paymentsPanel($('#payBox', m.el), b, updated => { m.close(); after?.(); bookingModal(updated, after); });
     $('[data-resend]', m.el).onclick = async e => {
       const btn = e.currentTarget; btn.disabled = true;
       try { const r = await api(`/bookings/${b.id}/email`, { method: 'POST', body: {} }); toast(`Email sent to ${r.to}`); }
       catch (er) { toast(er.message, true); }
       btn.disabled = false;
     };
+  }
+
+  // Payment history for one booking: staff record each payment (or refund) as they collect it.
+  async function paymentsPanel(el, b, onChange) {
+    let data;
+    try { data = await api(`/bookings/${b.id}/payments`); } catch (e) { el.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; return; }
+    const balance = Math.max(0, Math.round((b.total - b.amount_paid) * 100) / 100);
+    const done = b.status === 'cancelled';
+    el.innerHTML = `<h4>Payments</h4>
+      ${data.payments.length ? `<table class="tbl pay-tbl"><tbody>${data.payments.map(p => `<tr>
+          <td style="white-space:nowrap">${fmtDate(p.paid_on)}</td>
+          <td>${esc(p.method || '')}${p.note ? `<br><span class="small muted">${esc(p.note)}</span>` : ''}</td>
+          <td style="text-align:right;white-space:nowrap;font-weight:700;${p.amount < 0 ? 'color:var(--danger)' : ''}">${p.amount < 0 ? '−' + money2(-p.amount) : money2(p.amount)}</td>
+          <td style="width:1%"><button type="button" class="icon-btn" data-del="${p.id}" title="Delete this entry" aria-label="Delete payment">×</button></td></tr>`).join('')}</tbody></table>`
+        : '<p class="small muted" style="margin:.25rem 0 .75rem">No payments recorded yet.</p>'}
+      <form class="pay-form" novalidate>
+        <select name="type" aria-label="Type"><option value="payment">Payment</option><option value="refund">Refund</option></select>
+        <input name="amount" type="number" step="0.01" min="0.01" placeholder="Amount" value="${balance > 0 && !done ? balance.toFixed(2) : ''}" aria-label="Amount ($)">
+        <select name="method" aria-label="Method">${data.methods.map(x => `<option>${esc(x)}</option>`).join('')}</select>
+        <input name="paid_on" type="date" value="${todayStr()}" aria-label="Date">
+        <input name="note" placeholder="Note (optional)" aria-label="Note">
+        <button class="btn btn-dark btn-sm">Record</button>
+        <label class="check small"><input type="checkbox" name="receipt" checked> Email a receipt to the guest</label>
+      </form>`;
+    const form = $('.pay-form', el);
+    form.type.onchange = () => { form.receipt.closest('label').classList.toggle('hidden', form.type.value === 'refund'); if (form.type.value === 'refund') form.amount.value = ''; };
+    form.onsubmit = async ev => {
+      ev.preventDefault();
+      const d = formData(form);
+      // Paying more than is owed is allowed (extra charges), but easy to do by mistake, so ask first.
+      if (d.type === 'payment' && Number(d.amount) > balance + 0.005
+        && !confirm(`${money2(Number(d.amount))} is more than the balance due (${money2(balance)}). Record it anyway?`)) return;
+      const btn = $('button', form); btn.disabled = true;
+      try {
+        const r = await api(`/bookings/${b.id}/payments`, { method: 'POST', body: { ...d, amount: Number(d.amount), receipt: Boolean(d.receipt) } });
+        toast(d.type === 'refund' ? 'Refund recorded' : `Payment recorded${d.receipt ? ' · receipt emailed' : ''}`); refreshCounts(); onChange(r.booking);
+      } catch (e) { toast(e.message, true); btn.disabled = false; }
+    };
+    $$('[data-del]', el).forEach(x => x.onclick = async () => {
+      if (!confirm('Delete this payment entry? The balance will be recalculated.')) return;
+      try { const r = await api(`/payments/${x.dataset.del}`, { method: 'DELETE' }); toast('Payment deleted'); onChange(r.booking); }
+      catch (e) { toast(e.message, true); }
+    });
   }
 
   async function newBookingModal(preset = {}) {
@@ -304,23 +345,50 @@
   let calState = { kind: 'lot', start: null };
   async function calendarView() {
     if (!calState.start) calState.start = addDays(todayStr(), -3);
-    const [list, items] = await Promise.all([api('/bookings'), api(calState.kind === 'rv' ? '/rvs' : '/lots')]);
+    const [list, items, allBlocks] = await Promise.all([api('/bookings'), api(calState.kind === 'rv' ? '/rvs' : '/lots'), api('/blocks')]);
+    const blocks = allBlocks.filter(x => x.kind === calState.kind);
     const days = Array.from({ length: 28 }, (_, i) => addDays(calState.start, i));
     const t = todayStr();
     const live = list.filter(b => b.kind === calState.kind && b.status !== 'cancelled' && b.end_date > days[0] && b.start_date <= days[27]);
     $('#vActions').innerHTML = `<div class="tabs" style="margin:0"><button data-k="lot" class="${calState.kind === 'lot' ? 'active' : ''}">RV sites</button><button data-k="rv" class="${calState.kind === 'rv' ? 'active' : ''}">RV fleet</button></div>
-      <button class="btn btn-ghost btn-sm" data-shift="-14">‹ 2 weeks</button><button class="btn btn-ghost btn-sm" data-shift="0">Today</button><button class="btn btn-ghost btn-sm" data-shift="14">2 weeks ›</button>`;
+      <button class="btn btn-ghost btn-sm" data-shift="-14">‹ 2 weeks</button><button class="btn btn-ghost btn-sm" data-shift="0">Today</button><button class="btn btn-ghost btn-sm" data-shift="14">2 weeks ›</button><button class="btn btn-dark btn-sm" id="blockBtn">Block dates</button>`;
     $$('#vActions [data-k]').forEach(b => b.onclick = () => { calState.kind = b.dataset.k; calendarView(); });
     $$('#vActions [data-shift]').forEach(b => b.onclick = () => { const n = Number(b.dataset.shift); calState.start = n ? addDays(calState.start, n) : addDays(t, -3); calendarView(); });
-    $('#view').innerHTML = `<p class="muted small">Click a booked cell to open the booking, or an empty cell to create one starting that day.
-      <span style="margin-left:1rem"><span class="status-pill" style="background:var(--sun);color:#fff">confirmed</span> <span class="status-pill" style="background:#f7b98f">pending</span> <span class="status-pill" style="background:#42a5f5;color:#fff">checked in</span> <span class="status-pill" style="background:#b0bec5">completed</span></span></p>
+    $('#blockBtn').onclick = () => blockModal(items);
+    $('#view').innerHTML = `<p class="muted small">Click a booked cell to open the booking, a grey striped cell to remove a block, or an empty cell to create a booking starting that day.
+      <span style="margin-left:1rem"><span class="status-pill" style="background:var(--sun);color:#fff">confirmed</span> <span class="status-pill" style="background:#f7b98f">pending</span> <span class="status-pill" style="background:#42a5f5;color:#fff">checked in</span> <span class="status-pill" style="background:#b0bec5">completed</span> <span class="status-pill blk-key">blocked</span></span></p>
       <div class="timeline"><table><thead><tr><th class="name">${calState.kind === 'rv' ? 'RV' : 'Site'}</th>${days.map(d => { const dt = new Date(d + 'T00:00:00'); const w = dt.getDay() % 6 === 0; return `<th class="${w ? 'wknd' : ''} ${d === t ? 'today' : ''}">${dt.toLocaleDateString('en-US', { weekday: 'narrow' })}<br>${dt.getDate()}</th>`; }).join('')}</tr></thead>
       <tbody>${items.filter(i => i.status !== 'retired' && i.status !== 'closed').map(i => `<tr><td class="name">${esc(calState.kind === 'rv' ? i.name : i.code)}${calState.kind !== 'rv' && i.campground_name ? ` <span class="small muted">${esc(i.campground_name)}</span>` : ''}${i.status !== 'active' ? ' <span class="small muted">(' + esc(i.status) + ')</span>' : ''}</td>${days.map(d => {
         const b = live.find(x => x.item_id === i.id && x.start_date <= d && x.end_date > d);
+        const bl = !b && blocks.find(x => x.item_id === i.id && x.start_date <= d && x.end_date > d);
+        if (bl) return `<td class="blk" data-block="${bl.id}" title="Blocked ${esc(bl.start_date)} → ${esc(bl.end_date)}${bl.reason ? ' · ' + esc(bl.reason) : ''}"></td>`;
         return b ? `<td class="b ${b.status}" data-bid="${b.id}" title="${esc(b.customer_name)} · ${esc(b.code)} · ${b.start_date} → ${b.end_date}"></td>` : `<td class="${d === t ? 'today' : ''}" data-new="${i.id}" data-d="${d}" style="cursor:copy"></td>`;
       }).join('')}</tr>`).join('')}</tbody></table></div>`;
     $$('#view [data-bid]').forEach(td => td.onclick = () => bookingModal(list.find(b => b.id === Number(td.dataset.bid)), calendarView));
+    $$('#view [data-block]').forEach(td => td.onclick = async () => {
+      const bl = blocks.find(x => x.id === Number(td.dataset.block));
+      if (!confirm(`Remove this block (${bl.item_name}, ${fmtDate(bl.start_date)} → ${fmtDate(bl.end_date)}${bl.reason ? ', ' + bl.reason : ''})? The dates become bookable again.`)) return;
+      try { await api('/blocks/' + bl.id, { method: 'DELETE' }); toast('Block removed'); calendarView(); } catch (e) { toast(e.message, true); }
+    });
     $$('#view [data-new]').forEach(td => td.onclick = () => { if (td.dataset.d >= t) newBookingModal({ kind: calState.kind, item_id: td.dataset.new, start: td.dataset.d, end: addDays(td.dataset.d, calState.kind === 'rv' ? 3 : 2) }); });
+  }
+
+  // Block dates for maintenance or owner use: they show as unavailable on the website and can't be booked.
+  function blockModal(items) {
+    const t = todayStr(), isRv = calState.kind === 'rv';
+    const units = items.filter(i => i.status !== 'retired' && i.status !== 'closed');
+    const m = modal('Block dates', `<form id="blkForm" class="form-grid" novalidate>
+      <div class="full" id="blkErr"></div>
+      <div class="field full"><label>${isRv ? 'RV' : 'RV site'}</label><select name="item_id">${units.map(i => `<option value="${i.id}">${esc(isRv ? i.name : `Site ${i.code}${i.campground_name ? ' · ' + i.campground_name : ''}`)}</option>`).join('')}</select></div>
+      <div class="field"><label>From</label><input type="date" name="start" value="${t}" required></div>
+      <div class="field"><label>Until (first open day)</label><input type="date" name="end" value="${addDays(t, 3)}" required></div>
+      <div class="field full"><label>Reason (staff only)</label><input name="reason" placeholder="e.g. Maintenance, owner use, repairs"></div>
+    </form>`, '<button class="btn btn-ghost" data-close>Cancel</button><button class="btn btn-primary" id="blkSave">Block these dates</button>');
+    $('#blkSave', m.el).onclick = async () => {
+      const d = formData($('#blkForm', m.el));
+      try { await api('/blocks', { method: 'POST', body: { ...d, kind: calState.kind } }); m.close(); toast('Dates blocked'); calendarView(); }
+      catch (e) { $('#blkErr', m.el).innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
+    };
   }
 
   // ---------------- inventory CRUD ----------------
@@ -522,6 +590,13 @@
         ${text('check_in_time', 'Site check-in time')}${text('check_out_time', 'Site check-out time')}
         ${text('rv_pickup_time', 'RV pickup time')}${text('rv_return_time', 'RV return time')}
       </div></div>
+      <div class="panel"><h3>Payments</h3>
+        <p class="small muted" style="margin-top:-.25rem">You collect payment yourselves. Record each payment on the booking (Bookings → open a booking → Payments) and the guest gets a receipt.</p>
+        <div class="form-grid">
+          <div class="field full"><label>How guests pay (shown in booking emails and on the guest’s booking page)</label><textarea name="payment_instructions" style="min-height:110px" placeholder="e.g. Pay by Zelle to bookings@… or cash or card at pickup. The balance is due 7 days before arrival.">${esc(s.payment_instructions || '')}</textarea></div>
+          <div class="field"><label>Release unpaid website requests after (days)</label><input name="hold_days" type="number" min="0" max="30" value="${esc(s.hold_days ?? 3)}">
+            <p class="small muted" style="margin:.35rem 0 0">Requests still <em>pending</em> with no payment are cancelled after this many days, freeing the dates. The guest is emailed a reminder the day before. Confirming a booking or recording any payment keeps it. 0 turns this off.</p></div>
+        </div></div>
       <div class="panel"><h3>RV rental add-ons</h3><div id="rvAdd"></div></div>
       <div class="panel"><h3>RV site add-ons</h3><div id="lotAdd"></div></div>
       <div class="panel" id="emailPanel"><h3>Email</h3><div class="form-grid">

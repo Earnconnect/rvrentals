@@ -225,6 +225,27 @@ CREATE TABLE IF NOT EXISTS email_log (
   status TEXT, provider_id TEXT, error TEXT,
   created_at TEXT DEFAULT (datetime('now'))
 );
+CREATE TABLE IF NOT EXISTS payments (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  booking_id INTEGER NOT NULL REFERENCES bookings(id),
+  amount REAL NOT NULL,
+  method TEXT,
+  note TEXT,
+  paid_on TEXT NOT NULL,
+  recorded_by TEXT,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_payments_booking ON payments(booking_id);
+CREATE TABLE IF NOT EXISTS blocks (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  kind TEXT NOT NULL,
+  item_id INTEGER NOT NULL,
+  start_date TEXT NOT NULL,
+  end_date TEXT NOT NULL,
+  reason TEXT,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_blocks_item ON blocks(kind, item_id, start_date, end_date);
 `;
 
 // ---------- passwords ----------
@@ -262,6 +283,10 @@ export const DEFAULT_SETTINGS = {
   address: '1200 Sunrise Palm Way, Kissimmee, FL 34746',
   hours: 'Mon–Sat 8:00 AM – 6:00 PM · Sun 10:00 AM – 4:00 PM',
   tax_rate: 0.07,
+  // Payment is collected by staff, not online. Shown in booking emails and on the guest's booking page.
+  payment_instructions: 'We collect payment directly, not online. After we confirm your booking, our team will contact you with how to pay. The balance is due by pickup or check-in.',
+  // Website requests that are still pending with no payment after this many days are cancelled, freeing the dates (0 = never).
+  hold_days: 3,
   check_in_time: '3:00 PM',
   check_out_time: '11:00 AM',
   rv_pickup_time: '2:00 PM',
@@ -506,6 +531,11 @@ export async function initSchema() {
       ALTER TABLE chats ADD COLUMN emailed_up_to INTEGER DEFAULT 0;`);
     await markChatRepliesEmailed();
   }
+  if (!await hasColumn('bookings', 'hold_warned_at')) await db.exec('ALTER TABLE bookings ADD COLUMN hold_warned_at TEXT');
+  // Payments recorded before the payment history existed become one entry each, so totals keep adding up.
+  await db.exec(`INSERT INTO payments (booking_id, amount, method, note, paid_on)
+    SELECT id, amount_paid, 'Other', 'Recorded before payment history', substr(created_at, 1, 10) FROM bookings b
+    WHERE amount_paid > 0 AND NOT EXISTS (SELECT 1 FROM payments p WHERE p.booking_id = b.id)`);
 }
 // Treat every staff reply already on record as handled, so the chat email check never resends old replies.
 export const markChatRepliesEmailed = () => db.exec(`UPDATE chats SET emailed_up_to =

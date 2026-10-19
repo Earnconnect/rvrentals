@@ -208,16 +208,24 @@ function tripDates(b) {
     ${tile(isRv ? 'Return' : 'Check-out', b.end_date, isRv ? s.rv_return_time : s.check_out_time, ' stack-gap')}
   </tr></table>`;
 }
+const balanceOf = b => b.status === 'cancelled' ? 0 : Math.max(0, Math.round((b.total - b.amount_paid) * 100) / 100);
 function bookingRows(b, itemName) {
+  const balance = balanceOf(b);
   return tripDates(b) + rows([
     ['Confirmation code', b.code, true],
     [b.kind === 'rv' ? 'RV' : 'RV site', itemName],
     ['Stay', `${b.nights} night${b.nights > 1 ? 's' : ''} · ${b.guests} guest${b.guests > 1 ? 's' : ''}`],
     ['Total', money(b.total), true],
     ['Paid', money(b.amount_paid)],
+    balance > 0 && b.amount_paid > 0 ? ['Balance due', money(balance), true] : null,
     b.deposit ? ['Refundable deposit (at pickup)', money(b.deposit)] : null
   ]);
 }
+// The business's own payment instructions (Admin → Settings), shown while there is something left to pay.
+const howToPay = b => {
+  const text = String(getSettings().payment_instructions || '').trim();
+  return text && balanceOf(b) > 0 ? box(esc(text).replace(/\n/g, '<br>'), { tone: 'info', title: 'How to pay' }) : '';
+};
 function arrivalInfo(b) {
   const s = getSettings();
   return b.kind === 'rv'
@@ -241,7 +249,7 @@ export async function bookingReceived(b, itemName, { paymentLink = false } = {})
     subject: `${confirmed ? 'Booking confirmed' : 'Booking received'} · ${b.code}`,
     html: layout({ preheader: `${itemName} · ${fmtDate(b.start_date)} – ${fmtDate(b.end_date)}`, hero: await unitPhoto(b),
       eyebrow: confirmed ? 'Booking confirmed' : 'Booking received', status: bookingStatus(b), title, intro,
-      body: bookingRows(b, itemName) + (confirmed ? arrivalInfo(b) : ''),
+      body: bookingRows(b, itemName) + (paymentLink ? '' : howToPay(b)) + (confirmed ? arrivalInfo(b) : ''),
       cta: { label: paymentLink && !confirmed ? 'View booking & pay' : 'View or manage your booking', url: manageUrl(b) },
       footerNote: `<strong>Cancellation policy:</strong> ${esc(getSettings().cancellation_policy)}` }),
     text: plain([title, '', intro, '', `Confirmation code: ${b.code}`, `${itemName}`, `${fmtDate(b.start_date)} – ${fmtDate(b.end_date)}`, `Total: ${money(b.total)}`, '', `Manage your booking: ${manageUrl(b)}`])
@@ -253,18 +261,47 @@ export async function bookingConfirmed(b, itemName) {
     kind: 'booking_confirmed', to: b.customer_email, subject: `Booking confirmed · ${b.code}`,
     html: layout({ preheader: `See you on ${fmtDate(b.start_date)}!`, hero: await unitPhoto(b), eyebrow: 'You’re all set', status: { label: 'Confirmed', tone: 'ok' },
       title: `You’re confirmed, ${first}!`, intro: `Great news: your ${b.kind === 'rv' ? 'RV rental' : 'RV site'} is confirmed. We can’t wait to see you.`,
-      body: bookingRows(b, itemName) + arrivalInfo(b), cta: { label: 'View your booking', url: manageUrl(b) } }),
+      body: bookingRows(b, itemName) + howToPay(b) + arrivalInfo(b), cta: { label: 'View your booking', url: manageUrl(b) } }),
     text: plain([`You're confirmed, ${first}!`, '', `${b.code} · ${itemName}`, `${fmtDate(b.start_date)} – ${fmtDate(b.end_date)}`, '', `View your booking: ${manageUrl(b)}`])
   });
 }
-export async function paymentReceived(b, itemName) {
+// Receipt for one payment recorded by staff (or taken online). Falls back to the booking's total paid.
+export async function paymentReceived(b, itemName, { amount = b.amount_paid, method = '', paid_on = '' } = {}) {
+  const full = balanceOf(b) <= 0;
+  const how = [method && `by ${esc(method)}`, paid_on && `on ${fmtDate(paid_on)}`].filter(Boolean).join(' ');
   return sendMail({
-    kind: 'payment_received', to: b.customer_email, subject: `Payment received · ${b.code}`,
-    html: layout({ preheader: `We received ${money(b.amount_paid)}. Thank you!`, hero: await unitPhoto(b), eyebrow: 'Receipt', status: { label: 'Paid', tone: 'ok' },
-      title: 'Payment received. Thank you!',
-      intro: `We’ve received your payment of <strong>${money(b.amount_paid)}</strong> for booking ${esc(b.code)}. Keep this email as your receipt.`,
-      body: bookingRows(b, itemName), cta: { label: 'View your booking', url: manageUrl(b) } }),
-    text: plain(['Payment received. Thank you!', `Amount: ${money(b.amount_paid)}`, `Booking: ${b.code}`, manageUrl(b)])
+    kind: 'payment_received', to: b.customer_email, subject: `${full ? 'Paid in full' : 'Payment received'} · ${b.code}`,
+    html: layout({ preheader: `We received ${money(amount)}. Thank you!`, hero: await unitPhoto(b), eyebrow: 'Receipt',
+      status: full ? { label: 'Paid in full', tone: 'ok' } : { label: 'Partly paid', tone: 'info' },
+      title: full ? 'Paid in full. Thank you!' : 'Payment received. Thank you!',
+      intro: `We’ve received your payment of <strong>${money(amount)}</strong>${how ? ' ' + how : ''} for booking ${esc(b.code)}.`
+        + (full ? ' You’re all paid up. Keep this email as your receipt.' : ` Your remaining balance is <strong>${money(balanceOf(b))}</strong>.`),
+      body: bookingRows(b, itemName) + (full ? '' : howToPay(b)), cta: { label: 'View your booking', url: manageUrl(b) } }),
+    text: plain([full ? 'Paid in full. Thank you!' : 'Payment received. Thank you!', `Amount: ${money(amount)}${method ? ` (${method})` : ''}`, `Booking: ${b.code}`,
+      full ? '' : `Balance due: ${money(balanceOf(b))}`, manageUrl(b)])
+  });
+}
+// A website request that is still unpaid: sent a day before its dates are released.
+export async function holdWarning(b, itemName, releaseOn) {
+  const first = b.customer_name.split(' ')[0];
+  return sendMail({
+    kind: 'hold_warning', to: b.customer_email, subject: `Action needed: your dates are held until ${fmtShort(releaseOn)} · ${b.code}`,
+    html: layout({ preheader: `Your ${itemName} dates are held until ${fmtDate(releaseOn)}.`, hero: await unitPhoto(b), eyebrow: 'Reminder', status: { label: 'Awaiting payment', tone: 'warn' },
+      title: `${first}, your dates are held until ${fmtShort(releaseOn)}`,
+      intro: `We haven’t received a payment for booking <strong>${esc(b.code)}</strong> yet. To keep your dates, please pay or reply to this email by <strong>${fmtDate(releaseOn)}</strong>. After that the dates are released so other guests can book them.`,
+      body: bookingRows(b, itemName) + howToPay(b), cta: { label: 'View your booking', url: manageUrl(b) } }),
+    text: plain([`Your dates are held until ${fmtDate(releaseOn)}`, `Booking ${b.code} · ${itemName}`, 'Please pay or reply to this email to keep your dates.', manageUrl(b)])
+  });
+}
+export function holdReleased(b, itemName) {
+  return sendMail({
+    kind: 'hold_released', to: b.customer_email, subject: `Your hold has been released · ${b.code}`,
+    html: layout({ preheader: `${itemName} · ${fmtDate(b.start_date)}`, eyebrow: 'Booking request', status: { label: 'Released', tone: 'bad' },
+      title: 'Your held dates have been released',
+      intro: `We didn’t receive a payment for booking <strong>${esc(b.code)}</strong>, so the dates have been released. If you still want to go, you’re welcome to book again, and if you think this is a mistake, just reply to this email.`,
+      body: rows([['Confirmation code', b.code, true], [b.kind === 'rv' ? 'RV' : 'RV site', itemName], ['Dates', `${fmtDate(b.start_date)} – ${fmtDate(b.end_date)}`]]),
+      cta: { label: 'Book again', url: `${BASE_URL}/${b.kind === 'rv' ? 'rentals' : 'sites'}` } }),
+    text: plain(['Your held dates have been released', `Booking ${b.code} · ${itemName}`, `${fmtDate(b.start_date)} – ${fmtDate(b.end_date)}`, `Book again: ${BASE_URL}`])
   });
 }
 export function bookingCancelled(b, itemName, { byGuest = false } = {}) {
@@ -338,6 +375,9 @@ export const staffNewBooking = (b, itemName) => staff('staff_booking', `New book
 export const staffCancelled = (b, itemName) => staff('staff_cancel', `Guest cancelled ${b.code} · ${itemName}`, 'A guest cancelled online',
   [['Code', b.code, true], ['Guest', `${b.customer_name} · ${b.customer_email}`], ['Unit', itemName], ['Dates', `${fmtDate(b.start_date)} – ${fmtDate(b.end_date)}`], ['Amount paid', money(b.amount_paid)]],
   p('Review any refund due under the cancellation policy.'), '#bookings', 'bad');
+export const staffHoldReleased = (b, itemName, days) => staff('staff_hold_released', `Released unpaid request ${b.code} · ${itemName}`, 'An unpaid request was released',
+  [['Code', b.code, true], ['Guest', `${b.customer_name} · ${b.customer_email}${b.customer_phone ? ' · ' + b.customer_phone : ''}`], ['Unit', itemName], ['Dates', `${fmtDate(b.start_date)} – ${fmtDate(b.end_date)}`]],
+  p(`No payment was recorded within ${days} days, so the booking was cancelled and its dates are open again. The guest was emailed. To keep it, restore it in the back office and record a payment.`), '#bookings', 'warn');
 export const staffInquiry = (i, listingTitle) => staff('staff_inquiry', `New ${i.kind} inquiry · ${listingTitle}`, `New sales ${i.kind === 'info' ? 'question' : i.kind}`,
   [['Listing', listingTitle], ['From', `${i.name} · ${i.email}${i.phone ? ' · ' + i.phone : ''}`], i.offer_amount ? ['Offer', money(i.offer_amount), true] : null, i.preferred_date ? ['Preferred date', fmtDate(i.preferred_date)] : null],
   i.message ? quote(i.message) : '', '#inquiries');

@@ -106,19 +106,23 @@ const itemLabel = async (kind, item) => {
   return `RV Site ${item.code}${cg ? ' · ' + cg.name : ''}`;
 };
 
+// Nights an RV or site can't be booked: live bookings plus dates staff blocked (maintenance, owner use).
+// Blocks get booking_id -1 so excluding a booking by id never excludes them.
+const BUSY = `(SELECT kind, item_id, start_date, end_date, id AS booking_id FROM bookings WHERE status != 'cancelled'
+  UNION ALL SELECT kind, item_id, start_date, end_date, -1 FROM blocks)`;
+// SQL condition that is true when the unit is free for [start, end). Binds: kind, item_id, end, start, excluded booking id.
+const FREE_SQL = `NOT EXISTS (SELECT 1 FROM ${BUSY} x WHERE x.kind = ? AND x.item_id = ? AND x.start_date < ? AND x.end_date > ? AND x.booking_id != ?)`;
+
 async function isAvailable(kind, id, start, end, excludeId = 0) {
-  const row = await db.prepare(`SELECT COUNT(*) AS c FROM bookings WHERE kind = ? AND item_id = ? AND status != 'cancelled'
-    AND start_date < ? AND end_date > ? AND id != ?`).get(kind, Number(id), end, start, excludeId);
-  return row.c === 0;
+  return Boolean((await db.prepare(`SELECT ${FREE_SQL} AS free`).get(kind, Number(id), end, start, excludeId)).free);
 }
 async function bookedRanges(kind, id) {
-  return db.prepare(`SELECT start_date AS start, end_date AS end FROM bookings WHERE kind = ? AND item_id = ?
-    AND status != 'cancelled' AND end_date > ? ORDER BY start_date`).all(kind, Number(id), todayStr());
+  return db.prepare(`SELECT start_date AS start, end_date AS end FROM ${BUSY} x WHERE kind = ? AND item_id = ?
+    AND end_date > ? ORDER BY start_date`).all(kind, Number(id), todayStr());
 }
-// Ids of every RV or site booked for any night in [start, end), in one query instead of one per item.
+// Ids of every RV or site taken for any night in [start, end), in one query instead of one per item.
 async function bookedIds(kind, start, end) {
-  const rows = await db.prepare(`SELECT DISTINCT item_id FROM bookings WHERE kind = ? AND status != 'cancelled'
-    AND start_date < ? AND end_date > ?`).all(kind, end, start);
+  const rows = await db.prepare(`SELECT DISTINCT item_id FROM ${BUSY} x WHERE kind = ? AND start_date < ? AND end_date > ?`).all(kind, end, start);
   return new Set(rows.map(r => r.item_id));
 }
 
@@ -194,15 +198,20 @@ async function createBooking(body, { admin = false } = {}) {
   }
   if (!admin && !body.agree) throw new HttpError(400, 'Please accept the rental terms and cancellation policy.');
   const q = await computeQuote(kind, item, body.start, body.end, body.addons, { ignoreMin: admin });
-  if (!q.available) throw new HttpError(409, 'Sorry — those dates were just booked. Please choose different dates.');
+  const taken = admin ? 'Those dates aren’t available: they’re already booked or blocked.' : 'Sorry — those dates were just booked. Please choose different dates.';
+  if (!q.available) throw new HttpError(409, taken);
 
+  // Check availability and save in one statement, so two guests booking the same dates at the same moment
+  // can't both succeed (the database runs one write at a time).
   const code = await genCode();
-  await db.prepare(`INSERT INTO bookings (code, kind, item_id, start_date, end_date, nights, guests, customer_name, customer_email,
+  const saved = await db.prepare(`INSERT INTO bookings (code, kind, item_id, start_date, end_date, nights, guests, customer_name, customer_email,
     customer_phone, rig_info, addons, base, addons_total, fees, tax, total, deposit, status, notes, source)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+    SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,? WHERE ${FREE_SQL}`).run(
     code, kind, item.id, q.start, q.end, q.nights, guests, name, email, phone, rigInfo, JSON.stringify(q.addons),
     q.base, q.addons_total, q.fees, q.tax, q.total, q.deposit, admin && body.status === 'confirmed' ? 'confirmed' : 'pending',
-    str(body.notes, 2000), admin ? 'admin' : 'web');
+    str(body.notes, 2000), admin ? 'admin' : 'web',
+    kind, item.id, q.end, q.start, 0);
+  if (!saved.changes) throw new HttpError(409, taken);
   return db.prepare('SELECT * FROM bookings WHERE code = ?').get(code);
 }
 
@@ -212,8 +221,44 @@ async function unitName(b) {
 
 async function publicBooking(b) {
   const item = await db.prepare(`SELECT * FROM ${TABLE[b.kind]} WHERE id = ?`).get(b.item_id);
-  const { admin_notes, stripe_session, ...rest } = hydrate(b);
-  return { ...rest, item_name: item ? await itemLabel(b.kind, item) : 'Unknown', item: item ? hydrate(item) : null };
+  const { admin_notes, stripe_session, hold_warned_at, ...rest } = hydrate(b);
+  return { ...rest, hold_until: holdUntil(b), item_name: item ? await itemLabel(b.kind, item) : 'Unknown', item: item ? hydrate(item) : null };
+}
+
+// ---------- unpaid holds ----------
+// A website request that staff haven't confirmed and that has no payment holds its dates for hold_days days.
+// The guest is warned a day before, then the request is cancelled and the dates are freed. 0 turns this off.
+const holdDays = () => Math.max(0, Math.min(30, parseInt(getSettings().hold_days, 10) || 0));
+const isHeld = b => b.status === 'pending' && b.source === 'web' && b.amount_paid <= 0;
+const holdUntil = b => holdDays() && isHeld(b) ? addDays(String(b.created_at).slice(0, 10), holdDays()) : null;
+async function releaseUnpaidHolds() {
+  const days = holdDays();
+  if (!days) return { warned: 0, released: 0 };
+  const held = `status = 'pending' AND source = 'web' AND amount_paid <= 0 AND start_date > ?`;
+  let warned = 0, released = 0;
+  // Release: past the hold, and (when holds are 2+ days) warned at least ~a day ago.
+  const due = await db.prepare(`SELECT * FROM bookings WHERE ${held} AND created_at <= datetime('now', ?)
+    AND (? < 2 OR hold_warned_at <= datetime('now', '-20 hours'))`).all(todayStr(), `-${days} days`, days);
+  for (const b of due) {
+    const r = await db.prepare(`UPDATE bookings SET status = 'cancelled', admin_notes = trim(coalesce(admin_notes, '') || ?) WHERE id = ? AND ${held}`)
+      .run(` [Released automatically: no payment after ${days} days]`, b.id, todayStr());
+    if (!r.changes) continue;
+    released++;
+    const nb = await db.prepare('SELECT * FROM bookings WHERE id = ?').get(b.id), unit = await unitName(nb);
+    mail.queue(mail.holdReleased, nb, unit);
+    mail.queue(mail.staffHoldReleased, nb, unit, days);
+  }
+  // Warn: one day before the hold ends.
+  if (days >= 2) {
+    const soon = await db.prepare(`SELECT * FROM bookings WHERE ${held} AND hold_warned_at IS NULL AND created_at <= datetime('now', ?)`).all(todayStr(), `-${days - 1} days`);
+    for (const b of soon) {
+      const r = await db.prepare("UPDATE bookings SET hold_warned_at = datetime('now') WHERE id = ? AND hold_warned_at IS NULL").run(b.id);
+      if (!r.changes) continue;
+      warned++;
+      mail.queue(mail.holdWarning, b, await unitName(b), addDays(todayStr(), 1));
+    }
+  }
+  return { warned, released };
 }
 
 async function stripe(method, endpoint, params) {
@@ -431,9 +476,14 @@ api.get('/payments/verify', async (req, res) => {
   const b = await db.prepare('SELECT * FROM bookings WHERE code = ?').get(session.metadata?.code || '');
   if (!b || b.stripe_session !== session.id) throw new HttpError(404, 'Booking not found for this payment.');
   if (session.payment_status === 'paid' && b.payment_status !== 'paid') {
-    const r = await db.prepare(`UPDATE bookings SET payment_status = 'paid', amount_paid = ?, status = CASE WHEN status = 'pending' THEN 'confirmed' ELSE status END WHERE id = ? AND payment_status != 'paid'`)
-      .run(round2(session.amount_total / 100), b.id);
-    if (r.changes) { const paid = await db.prepare('SELECT * FROM bookings WHERE id = ?').get(b.id); mail.queue(mail.paymentReceived, paid, await unitName(paid)); }
+    // Claim the payment first so a double page load can't record it twice.
+    const r = await db.prepare(`UPDATE bookings SET payment_status = 'paid', status = CASE WHEN status = 'pending' THEN 'confirmed' ELSE status END WHERE id = ? AND payment_status != 'paid'`).run(b.id);
+    if (r.changes) {
+      const amount = round2(session.amount_total / 100);
+      await recordPayment(b.id, { amount, method: 'Card (online)', note: 'Stripe Checkout', by: 'Stripe' });
+      const paid = await db.prepare('SELECT * FROM bookings WHERE id = ?').get(b.id);
+      mail.queue(mail.paymentReceived, paid, await unitName(paid), { amount, method: 'Card (online)', paid_on: todayStr() });
+    }
   }
   res.json({ paid: session.payment_status === 'paid' });
 });
@@ -514,6 +564,12 @@ async function addChatMessage(chatId, sender, body) {
   return db.prepare(`SELECT ${CHAT_MSG_COLS} FROM chat_messages WHERE id = ?`).get(r.lastInsertRowid);
 }
 const chatStatus = async () => { const st = getSettings(); return { online: await staffOnline(), hours: st.hours, email: st.email, support_email: st.support_email }; };
+
+// Daily jobs, run by Vercel Cron (see vercel.json). Vercel sends CRON_SECRET as a bearer token when it is set.
+api.get('/cron/daily', async (req, res) => {
+  if (process.env.CRON_SECRET && req.get('authorization') !== `Bearer ${process.env.CRON_SECRET}`) return res.status(401).json({ error: 'Unauthorized' });
+  res.json({ holds: await releaseUnpaidHolds() });
+});
 
 api.get('/seo', async (req, res) => { const u = new URL(str(req.query.path, 500) || '/', 'http://x'); res.json(seoJson(await seoFor(u.pathname, u.search.slice(1)))); });
 
@@ -710,6 +766,8 @@ admin.get('/schema', async (req, res) => {
 });
 
 admin.get('/stats', async (req, res) => {
+  // Also run the unpaid-hold check here, so it happens even if the daily job is delayed.
+  await releaseUnpaidHolds();
   const today = todayStr(), week = addDays(today, 7), month = today.slice(0, 7);
   const live = "status NOT IN ('cancelled')";
   // Each query is a network round trip to the database, so run them all at once.
@@ -777,22 +835,87 @@ admin.patch('/bookings/:id', async (req, res) => {
   const body = req.body || {};
   const status = body.status ?? b.status;
   if (!['pending', 'confirmed', 'checked_in', 'completed', 'cancelled'].includes(status)) throw new HttpError(400, 'Invalid status.');
-  const pay = body.payment_status ?? b.payment_status;
-  if (!['unpaid', 'partial', 'paid', 'refunded'].includes(pay)) throw new HttpError(400, 'Invalid payment status.');
-  if (b.status === 'cancelled' && status !== 'cancelled' && !await isAvailable(b.kind, b.item_id, b.start_date, b.end_date, b.id)) {
-    throw new HttpError(409, 'Cannot restore: those dates have since been booked by someone else.');
+  const notes = body.admin_notes !== undefined ? str(body.admin_notes, 3000) : b.admin_notes;
+  if (b.status === 'cancelled' && status !== 'cancelled') {
+    // Restoring a cancelled booking: only if its dates are still free, checked and saved in one statement.
+    const r = await db.prepare(`UPDATE bookings SET status = ?, admin_notes = ? WHERE id = ? AND ${FREE_SQL}`)
+      .run(status, notes, b.id, b.kind, b.item_id, b.end_date, b.start_date, b.id);
+    if (!r.changes) throw new HttpError(409, 'Cannot restore: those dates have since been booked or blocked.');
+  } else {
+    await db.prepare('UPDATE bookings SET status = ?, admin_notes = ? WHERE id = ?').run(status, notes, b.id);
   }
-  const paid = body.amount_paid !== undefined ? round2(body.amount_paid) : (pay === 'paid' && b.payment_status !== 'paid' ? b.total : b.amount_paid);
-  await db.prepare('UPDATE bookings SET status = ?, payment_status = ?, amount_paid = ?, admin_notes = ? WHERE id = ?')
-    .run(status, pay, paid, body.admin_notes !== undefined ? str(body.admin_notes, 3000) : b.admin_notes, b.id);
   if (body.notify !== false) {
     const nb = await db.prepare('SELECT * FROM bookings WHERE id = ?').get(b.id), unit = await unitName(nb);
     if (status === 'cancelled' && b.status !== 'cancelled') mail.queue(mail.bookingCancelled, nb, unit);
     else if (status === 'confirmed' && b.status === 'pending') mail.queue(mail.bookingConfirmed, nb, unit);
-    else if (pay === 'paid' && b.payment_status !== 'paid') mail.queue(mail.paymentReceived, nb, unit);
     if (status === 'completed' && b.status !== 'completed' && await canReview(nb)) mail.queue(mail.reviewRequest, nb, unit);
   }
   res.json(hydrate(await db.prepare(`${BOOKINGS_SQL} WHERE b.id = ?`).get(b.id)));
+});
+
+// ---------- payments (collected by staff, recorded here) ----------
+const PAY_METHODS = ['Cash', 'Card (in person)', 'Zelle', 'Bank transfer', 'Check', 'Card (online)', 'Other'];
+const paymentsOf = id => db.prepare('SELECT * FROM payments WHERE booking_id = ? ORDER BY paid_on, id').all(id);
+// A booking's amount paid and payment status always follow its payment history (refunds are negative amounts).
+async function syncPayments(bookingId) {
+  const { total } = await db.prepare('SELECT total FROM bookings WHERE id = ?').get(bookingId);
+  const { sum, refunds } = await db.prepare('SELECT COALESCE(SUM(amount), 0) AS sum, COUNT(CASE WHEN amount < 0 THEN 1 END) AS refunds FROM payments WHERE booking_id = ?').get(bookingId);
+  const paid = round2(sum);
+  const status = paid > 0 && paid >= round2(total) ? 'paid' : paid > 0 ? 'partial' : refunds ? 'refunded' : 'unpaid';
+  await db.prepare('UPDATE bookings SET amount_paid = ?, payment_status = ? WHERE id = ?').run(paid, status, bookingId);
+}
+async function recordPayment(bookingId, { amount, method, note = '', paid_on = todayStr(), by = '' }) {
+  await db.prepare('INSERT INTO payments (booking_id, amount, method, note, paid_on, recorded_by) VALUES (?,?,?,?,?,?)')
+    .run(bookingId, round2(amount), method, note, paid_on, by);
+  await syncPayments(bookingId);
+}
+const bookingWithPayments = async id => ({ booking: hydrate(await db.prepare(`${BOOKINGS_SQL} WHERE b.id = ?`).get(id)), payments: await paymentsOf(id) });
+
+admin.get('/bookings/:id/payments', async (req, res) => res.json({ methods: PAY_METHODS, payments: await paymentsOf(Number(req.params.id)) }));
+admin.post('/bookings/:id/payments', async (req, res) => {
+  const b = await db.prepare('SELECT * FROM bookings WHERE id = ?').get(Number(req.params.id));
+  if (!b) throw new HttpError(404, 'Booking not found.');
+  const body = req.body || {};
+  const refund = body.type === 'refund';
+  const amount = round2(body.amount);
+  if (!(amount > 0 && amount < 1e6)) throw new HttpError(400, 'Enter an amount greater than $0.');
+  if (refund && amount > b.amount_paid + 0.001) throw new HttpError(400, `You can refund at most ${'$' + b.amount_paid.toFixed(2)} (the amount paid so far).`);
+  const method = PAY_METHODS.includes(body.method) ? body.method : 'Other';
+  const paid_on = isDate(body.paid_on) && body.paid_on <= addDays(todayStr(), 1) ? body.paid_on : todayStr();
+  await recordPayment(b.id, { amount: refund ? -amount : amount, method, note: str(body.note, 300), paid_on, by: req.user.email });
+  if (!refund && body.receipt !== false) {
+    const nb = await db.prepare('SELECT * FROM bookings WHERE id = ?').get(b.id);
+    mail.queue(mail.paymentReceived, nb, await unitName(nb), { amount, method, paid_on });
+  }
+  res.status(201).json(await bookingWithPayments(b.id));
+});
+admin.delete('/payments/:id', async (req, res) => {
+  const p = await db.prepare('SELECT booking_id FROM payments WHERE id = ?').get(Number(req.params.id));
+  if (!p) throw new HttpError(404, 'Payment not found.');
+  await db.prepare('DELETE FROM payments WHERE id = ?').run(Number(req.params.id));
+  await syncPayments(p.booking_id);
+  res.json(await bookingWithPayments(p.booking_id));
+});
+
+// ---------- blocked dates (maintenance, owner use) ----------
+admin.get('/blocks', async (req, res) => {
+  res.json(await db.prepare(`SELECT bl.*, CASE bl.kind WHEN 'rv' THEN (SELECT name FROM rvs WHERE id = bl.item_id)
+    ELSE (SELECT 'Site ' || code FROM lots WHERE id = bl.item_id) END AS item_name FROM blocks bl
+    WHERE bl.end_date >= date('now', '-60 days') ORDER BY bl.start_date`).all());
+});
+admin.post('/blocks', async (req, res) => {
+  const { kind, item_id, start, end } = req.body || {};
+  const item = await getItem(kind, item_id);
+  if (!isDate(start) || !isDate(end) || end <= start) throw new HttpError(400, 'Choose a start date and a later end date.');
+  if (nightsBetween(start, end) > 730) throw new HttpError(400, 'Blocks are limited to two years.');
+  const clash = await db.prepare(`SELECT code FROM bookings WHERE kind = ? AND item_id = ? AND status != 'cancelled' AND start_date < ? AND end_date > ?`).all(kind, item.id, end, start);
+  if (clash.length) throw new HttpError(409, `Those dates overlap booking${clash.length > 1 ? 's' : ''} ${clash.map(c => c.code).join(', ')}. Move or cancel ${clash.length > 1 ? 'them' : 'it'} first.`);
+  await db.prepare('INSERT INTO blocks (kind, item_id, start_date, end_date, reason) VALUES (?,?,?,?,?)').run(kind, item.id, start, end, str(req.body.reason, 200));
+  res.status(201).json({ ok: true });
+});
+admin.delete('/blocks/:id', async (req, res) => {
+  await db.prepare('DELETE FROM blocks WHERE id = ?').run(Number(req.params.id));
+  res.json({ ok: true });
 });
 admin.post('/bookings/:id/email', async (req, res) => {
   const b = await db.prepare('SELECT * FROM bookings WHERE id = ?').get(Number(req.params.id));
@@ -955,6 +1078,7 @@ admin.put('/settings', async (req, res) => {
     let v = body[key];
     if (key === 'tax_rate') { v = Number(v); if (!(v >= 0 && v < 0.5)) throw new HttpError(400, 'Tax rate must be between 0 and 0.5 (e.g. 0.07 for 7%).'); }
     if (key === 'max_site_guests') v = Math.max(1, parseInt(v, 10) || 1);
+    if (key === 'hold_days') { v = parseInt(v, 10); if (!(v >= 0 && v <= 30)) throw new HttpError(400, 'Hold days must be between 0 and 30 (0 turns automatic release off).'); }
     if (key === 'rv_addons' || key === 'lot_addons') {
       if (!Array.isArray(v)) throw new HttpError(400, 'Invalid add-ons.');
       v = v.filter(a => str(a.name)).map((a, i) => ({
