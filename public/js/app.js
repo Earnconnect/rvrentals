@@ -278,7 +278,7 @@
     async function refreshQuote() {
       const box = $('#quoteBox', el), btn = $('#continueBtn', el);
       if (!box) return;
-      if (!st.start || !st.end) { st.quote = null; box.innerHTML = '<p class="small muted" style="margin:0">Select your dates to see the total price.</p>'; btn.disabled = true; return; }
+      if (!st.start || !st.end) { st.quote = null; box.innerHTML = '<p class="small muted" style="margin:0">Select your dates to see the total price.</p>'; btn.disabled = true; updateBar(); return; }
       const seq = ++st.seq;
       box.innerHTML = '<p class="small muted">Calculating…</p>';
       try {
@@ -295,6 +295,27 @@
         st.quote = null;
         box.innerHTML = `<div class="alert alert-error" style="margin:0">${esc(err.message)}</div>`;
         btn.disabled = true;
+      }
+      updateBar();
+    }
+
+    // On phones and tablets the booking box sits below the details, so keep the price and a button to it in reach.
+    // The bar lives inside the page, so it goes away when the visitor navigates elsewhere.
+    const bar = document.createElement('div');
+    bar.className = 'book-bar';
+    bar.innerHTML = '<div class="book-bar-info"><strong></strong><span></span></div><button type="button" class="btn btn-primary"></button>';
+    bar.querySelector('button').onclick = () => el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    function updateBar() {
+      const qt = st.quote, short = d => fmtDate(d, { month: 'short', day: 'numeric' });
+      const [title, sub, btn] = [bar.querySelector('strong'), bar.querySelector('span'), bar.querySelector('button')];
+      if (qt?.available && st.start && st.end) {
+        title.textContent = `${money2(qt.total)} total`;
+        sub.textContent = `${qt.nights} night${qt.nights > 1 ? 's' : ''} · ${short(st.start)} – ${short(st.end)}`;
+        btn.textContent = st.step === 'details' ? 'Finish booking' : 'Continue';
+      } else {
+        title.textContent = `${money(item.nightly_rate)} / night`;
+        sub.textContent = qt && !qt.available ? 'Not available for these dates' : 'Add your dates to see the total';
+        btn.textContent = 'Check dates';
       }
     }
 
@@ -363,6 +384,7 @@
 
     function drawDetails() {
       const qt = st.quote, guest = savedGuest();
+      queueMicrotask(updateBar);
       el.innerHTML = `
         <button class="btn btn-ghost btn-sm" id="backBtn">← Change dates</button>
         <h3 style="margin:1rem 0 .25rem">Your trip</h3>
@@ -405,6 +427,12 @@
       };
     }
     drawDates();
+    if (item.status === 'active') {
+      updateBar();
+      el.closest('.container').appendChild(bar);
+      // Hidden while any part of the booking box is on screen.
+      new IntersectionObserver(([e]) => bar.classList.toggle('show', !e.isIntersecting)).observe(el);
+    }
   }
 
   // ---------------- pages ----------------
@@ -559,7 +587,9 @@
         <div class="field"><label>Sort</label><select name="sort">${[['featured', 'Recommended'], ['price', 'Price: low to high'], ['price-desc', 'Price: high to low'], ['sleeps', 'Most sleeping space']].map(([v, l]) => `<option value="${v}" ${v === sort ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
         <button type="button" class="btn btn-ghost" id="clearF">Clear</button>
       </form>
-      ${dated ? `<p class="muted">Showing availability for <strong>${fmtDate(q.start)}</strong> → <strong>${fmtDate(q.end)}</strong>.</p>` : ''}
+      <p class="result-count">${dated
+        ? `<strong>${list.filter(r => r.available).length}</strong> of ${list.length} RV${list.length === 1 ? '' : 's'} available for <strong>${fmtDate(q.start)}</strong> → <strong>${fmtDate(q.end)}</strong>`
+        : `<strong>${list.length}</strong> RV${list.length === 1 ? '' : 's'}${q.type || q.sleeps || q.state ? ' match your filters' : ' to choose from'} · add dates to check availability`}</p>
       ${list.length ? `<div class="grid">${list.map(r => rvCard(r, dated ? q : {})).join('')}</div>` : '<div class="empty"><h3>No RVs match those filters</h3><p>Try a different type or fewer guests.</p></div>'}
       <div style="height:3rem"></div></div>`;
     const f = $('#filters');

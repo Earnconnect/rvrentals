@@ -52,7 +52,7 @@ p { margin: 0 0 1em; }
 .topbar a { color: #fff; text-decoration: none; font-weight: 600; }
 .topbar a:hover { text-decoration: underline; }
 .topbar-links { display: flex; gap: 1.25rem; }
-@media (max-width: 640px) { #topHours { display: none; } .topbar .container { justify-content: center; } }
+@media (max-width: 640px) { #topHours, #topEmail { display: none; } .topbar .container { justify-content: center; } }
 .site-header { position: sticky; top: 0; z-index: 50; background: rgba(255, 255, 255, .9); backdrop-filter: saturate(1.4) blur(12px); -webkit-backdrop-filter: saturate(1.4) blur(12px); border-bottom: 1px solid rgba(19, 32, 30, .08); }
 .site-header .container { display: flex; align-items: center; gap: 1rem; height: 76px; }
 .brand { display: inline-flex; align-items: center; flex: none; text-decoration: none; line-height: 0; }
@@ -259,8 +259,10 @@ a.card:hover .media img { transform: scale(1.05); }
 .crumbs a:hover { color: var(--ink); text-decoration: underline; }
 .detail-title { margin-top: 1.75rem; }
 .detail-title h1 { font-size: clamp(2rem, 4vw, 2.9rem); font-weight: 500; }
-.spec-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 1px; margin: 1.5rem 0 2rem; background: var(--line); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
-.spec { background: #fff; padding: .9rem 1.05rem; }
+.spec-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); margin: 1.5rem 0 2rem; background: #fff; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+/* Each cell draws its own left and top divider (painted over the cell before it); the -1px margins tuck the outer
+   edge's lines under the grid border, and a leftover cell at the end stays plain white. */
+.spec { background: #fff; padding: .9rem 1.05rem; border-left: 1px solid var(--line); border-top: 1px solid var(--line); margin: -1px 0 0 -1px; }
 .spec span { display: block; font-size: .7rem; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; font-weight: 700; margin-bottom: .15rem; }
 .spec strong { font-size: 1.02rem; }
 .detail h3 { margin-top: 1.75rem; font-size: 1.4rem; }
@@ -775,3 +777,24 @@ html.chat-locked, html.chat-locked body { overflow: hidden; }
 .timeline td.blk, .blk-key { background: repeating-linear-gradient(135deg, #cfd8dc 0 5px, #eceff1 5px 10px); cursor: pointer; }
 .blk-key { color: var(--ink); }
 .pay-info { margin-bottom: 1.25rem; border-left: 4px solid var(--sun); }
+
+/* ---------- result count on listing pages ---------- */
+.result-count { margin: 0 0 1.25rem; color: var(--muted); }
+.result-count strong { color: var(--ink); }
+
+/* ---------- sticky booking bar (phones and tablets) ---------- */
+.book-bar { display: none; }
+@media (max-width: 960px) {
+  .book-bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 200; display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+    padding: .7rem 1rem calc(.7rem + env(safe-area-inset-bottom)); background: #fff; border-top: 1px solid var(--line);
+    box-shadow: 0 -10px 30px rgba(19, 32, 30, .1); transform: translateY(110%); transition: transform .25s ease; }
+  .book-bar.show { transform: none; }
+  .book-bar-info { min-width: 0; }
+  .book-bar-info strong { display: block; font-size: 1.1rem; color: var(--ink); }
+  .book-bar-info span { display: block; font-size: .8rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .book-bar .btn { flex: none; }
+  .chat-root { transition: bottom .25s ease; }
+  body:has(.book-bar.show) .chat-root:not(.open) { bottom: 96px; }
+  body:has(.book-bar) .site-footer { padding-bottom: 84px; }
+}
+@media print { .book-bar { display: none !important; } }
