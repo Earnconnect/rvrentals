@@ -92,7 +92,7 @@
           <li>Taxes are refunded in proportion to the refunded amount.</li>
           <li>Add-ons that have already been delivered or used (for example, delivery and setup) are not refundable.</li>
           <li>No refund is given for early departure, late arrival, or no-shows unless required by this policy or by law.</li></ul>`],
-        ['Weather and closures', `<p>If we close the resort or cannot provide your RV or site because of a hurricane, named storm, government order or other emergency, you will receive a full refund for the affected nights, or a credit if you prefer.</p>`],
+        ['Weather and closures', `<p>If we close a campground or site, or cannot provide your RV or site, because of a hurricane, named storm, government order or other emergency, you will receive a full refund for the affected nights, or a credit if you prefer.</p>`],
         ['Security deposits (RV rentals)', `<p>The refundable security deposit is collected at pickup and returned within 7 days after the RV is returned and inspected, minus any charges allowed under the rental terms, such as damage not covered by protection, excess mileage, missing items, fuel or propane, cleaning beyond normal use, or smoking. We will give you an itemized list of any deductions.</p>`],
         ['If we cancel', `<p>If we must cancel your booking (for example, because an RV is unexpectedly out of service), we will offer a comparable alternative if one is available or give you a full refund.</p>`],
         ['Questions', contactBlock(S)]
@@ -100,7 +100,7 @@
     },
     {
       slug: 'accessibility', title: 'Accessibility Statement', short: 'Accessibility',
-      summary: 'Our commitment to making our website and resort usable for everyone.',
+      summary: 'Our commitment to making our website and RV sites usable for everyone.',
       sections: S => [
         ['Our commitment', `<p>${esc(S.business_name || 'STAYCAMPRV LLC')} wants everyone to be able to plan and book a trip with us. We aim for this website to meet the Web Content Accessibility Guidelines (WCAG) 2.1, Level AA.</p>`],
         ['What we do', `<ul><li>Pages are built with clear headings, labeled form fields and descriptive link text.</li>
@@ -108,7 +108,7 @@
           <li>Text and controls are designed for readable color contrast and work when zoomed to 200%.</li>
           <li>The layout adapts to phones and tablets, and animations are reduced when your device asks for reduced motion.</li></ul>`],
         ['Known limitations', `<p>Some photos and third-party content may not yet have full descriptions, and older PDFs or documents we send by email may not be fully accessible. We are working to improve these.</p>`],
-        ['At the resort', `<p>If you need an accessible site, help with RV orientation, or other accommodations during your stay, tell us when you book or contact us, and we will do our best to help.</p>`],
+        ['During your stay', `<p>If you need an accessible site, help with RV orientation, or other accommodations during your stay, tell us when you book or contact us, and we will do our best to help.</p>`],
         ['Feedback and help', `<p>If something on this website is hard to use, or you would like help making a booking, please contact us. We will respond and help you complete your booking by email or live chat.</p>${contactBlock(S)}`]
       ]
     }

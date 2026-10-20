@@ -273,7 +273,7 @@ export const DEFAULT_SETTINGS = {
   notify_email: '',
   // Where the business operates. role: Headquarters | Location | Branch. City and phone are optional.
   locations: [
-    { state: 'FL', role: 'Headquarters', city: 'Ocala', phone: '', blurb: 'Our main office in Ocala: RV rental pickup and returns, sales, and the STAYCAMPRV Resort.' },
+    { state: 'FL', role: 'Headquarters', city: 'Ocala', phone: '', blurb: 'Our main office in Ocala: RV rental pickup and returns, RV sites and sales.' },
     { state: 'AZ', role: 'Location', city: '', phone: '', blurb: 'Saguaro deserts, red rocks and the Grand Canyon. Ask us about RV rentals and campsites in Arizona.' },
     { state: 'UT', role: 'Location', city: '', phone: '', blurb: 'Canyon country and the Mighty 5 national parks. Ask us about RV rentals and campsites in Utah.' },
     { state: 'CO', role: 'Branch', city: '', phone: '', blurb: 'Rocky Mountain high country, alpine lakes and mountain towns. Ask our Colorado branch about your trip.' }
@@ -320,7 +320,7 @@ export const DEFAULT_SETTINGS = {
     { q: 'How do I change or cancel my booking?', a: 'Use "Manage Booking" with your confirmation code and email. You can cancel online, or call us to change dates.' }
   ],
   hero_title: 'Wake up somewhere beautiful.',
-  hero_subtitle: 'Rent a road-ready RV, park at our lakeside RV resort, or find the rig — or lot — you\'ll call home.'
+  hero_subtitle: 'Rent a road-ready RV, book a full-hookup RV site, or find the rig — or lot — you\'ll call home.'
 };
 
 // Settings are loaded from the database at the start of each request (refreshSettings), so getSettings() stays synchronous.

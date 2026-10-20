@@ -484,7 +484,9 @@
           <p>One local team for the whole journey — from your first weekend trip to a lot of your own by the lake.</p></div>
         <div class="pillars">
           <a class="pillar" href="/rentals"><div class="art">${photo('class-c-surf', 'Couple relaxing beside their rental motorhome')}</div><span class="num">01</span><div class="body"><h3>RV rentals</h3><p>Motorhomes, camper vans and towables, cleaned and road-checked before every trip.</p><span class="link">Browse the fleet ${icon('arrow').replace('<svg', '<svg width="16" height="16"')}</span></div></a>
-          <a class="pillar" href="/sites"><div class="art">${photo('resort-palms', 'RV sites under palm trees at the resort')}</div><span class="num">02</span><div class="body"><h3>RV resort sites</h3><p>Lakefront, pull-through and extended-stay sites by the night, week or month.</p><span class="link">See the park map ${icon('arrow').replace('<svg', '<svg width="16" height="16"')}</span></div></a>
+          <a class="pillar" href="/sites"><div class="art">${photo('resort-palms', 'RV sites under palm trees')}</div><span class="num">02</span><div class="body">${campList.length
+            ? '<h3>RV resort sites</h3><p>Lakefront, pull-through and extended-stay sites by the night, week or month.</p>'
+            : '<h3>RV sites</h3><p>Full-hookup RV sites by the night, week or month.</p>'}<span class="link">${campList.length ? 'See the park map' : 'See RV sites'} ${icon('arrow').replace('<svg', '<svg width="16" height="16"')}</span></div></a>
           <a class="pillar" href="/sales"><div class="art">${photo('lot-lake', 'Lakefront land surrounded by palms')}</div><span class="num">03</span><div class="body"><h3>RV & lot sales</h3><p>Inspected new and pre-owned RVs, plus deeded RV lots you can own outright.</p><span class="link">Shop listings ${icon('arrow').replace('<svg', '<svg width="16" height="16"')}</span></div></a>
         </div>
       </div></section>
@@ -496,11 +498,11 @@
 
       ${homeLocs.length > 1 ? `<section class="block" style="padding-top:0"><div class="container">
         <div class="section-head"><div><span class="eyebrow">Where we are</span><h2>RV adventures in ${homeLocs.length} states</h2>
-          <p>Headquartered in ${esc(homeLocs.find(l => l.hq)?.name || '')}, with RV rentals and campgrounds from the Gulf Coast to the Rockies.</p></div><a class="btn btn-ghost" href="/locations">All locations</a></div>
+          <p>Headquartered in ${esc(homeLocs.find(l => l.hq)?.name || '')}, with RV rentals and RV sites from the Gulf Coast to the Rockies.</p></div><a class="btn btn-ghost" href="/locations">All locations</a></div>
         <div class="grid loc-grid">${homeLocs.map(l => locationCard(l, locCounts)).join('')}</div>
       </div></section>` : ''}
 
-      <section class="block alt"><div class="container split">
+      ${campList.length ? `<section class="block alt"><div class="container split">
         <div class="split-media">
           <div>${photo('site-palms', 'RVs parked beneath palm trees')}</div>
           <div>${photo('band-sunset', 'Sunset over the lake in Kissimmee')}</div>
@@ -513,7 +515,7 @@
           <div class="amenities">${(S.amenities || []).slice(0, 8).map(a => `<div class="amenity">${esc(a)}</div>`).join('')}</div>
           <a class="btn btn-dark" href="/sites">Book a site</a>
         </div>
-      </div></section>
+      </div></section>` : ''}
 
       ${lotsForSale.length ? `<section class="block"><div class="container">
         <div class="section-head"><div><span class="eyebrow">Own your spot in the sun</span><h2>RV lots for sale</h2></div><a class="btn btn-ghost" href="/sales?category=lot">All lots</a></div>
@@ -701,13 +703,13 @@
     const inState = l => !q.state || R.stateOf(l.campground_location) === q.state;
     const list = sortLots(lots.filter(inState), q);
     const open = list.filter(l => tileState(l, len) === 'avail');
-    app.innerHTML = `${banner('RV sites & campgrounds', 'Find your spot', `Full-hookup RV sites at ${camps.length > 1 ? `${camps.length} campgrounds` : 'our campground'} across ${esc(R.regionsLabel(S))}, by the night, week or month. Every pad lists its own size, hookups and price. Check-in ${esc(S.check_in_time)} · Check-out ${esc(S.check_out_time)}.`, 'site-aerial-b')}
+    app.innerHTML = `${banner(camps.length ? 'RV sites & campgrounds' : 'RV sites', 'Find your spot', `Full-hookup RV sites${camps.length > 1 ? ` at ${camps.length} campgrounds` : camps.length ? ' at our campground' : ''} across ${esc(R.regionsLabel(S))}, by the night, week or month. Every pad lists its own size, hookups and price. Check-in ${esc(S.check_in_time)} · Check-out ${esc(S.check_out_time)}.`, 'site-aerial-b')}
       <div class="container">
       ${siteFilters(q, { camps, states: campStates })}
       ${camps.length ? `<div class="section-head" style="margin-top:2rem"><div><span class="eyebrow">Our campgrounds</span><h2>Choose a campground</h2></div></div>
         <div class="grid">${camps.filter(c => (!q.campground || String(c.id) === q.campground) && (!q.state || R.campState(c) === q.state)).map(c => campCard(c, q)).join('')}</div>` : ''}
       <div class="section-head" style="margin-top:3rem"><div><span class="eyebrow">Sites & pads</span><h2>${q.campground ? esc(camps.find(c => String(c.id) === q.campground)?.name || 'Sites') : 'All RV sites'}</h2>
-        <p><strong>${open.length}</strong> of ${list.length} sites available ${dated ? `for <strong>${fmtDate(q.start)}</strong> → <strong>${fmtDate(q.end)}</strong>` : 'tonight'}${len ? ` for a ${len} ft rig` : ''}.</p></div></div>
+        <p><strong>${open.length}</strong> of ${list.length} site${list.length === 1 ? '' : 's'} available ${dated ? `for <strong>${fmtDate(q.start)}</strong> → <strong>${fmtDate(q.end)}</strong>` : 'tonight'}${len ? ` for a ${len} ft rig` : ''}.</p></div></div>
       ${list.length ? `<div class="grid" id="lotGrid">${list.map((l, i) => lotCard(l, q).replace('<a class="card', `<a class="card${i >= 12 ? ' hidden' : ''}`)).join('')}</div>
         ${list.length > 12 ? `<div class="center" style="margin-top:1.75rem"><button class="btn btn-ghost" id="moreLots">Show all ${list.length} sites</button></div>` : ''}` : '<div class="empty"><h3>No sites match</h3><p>Try different dates or a shorter rig length.</p></div>'}
       <div style="height:3rem"></div></div>`;
