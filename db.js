@@ -273,7 +273,7 @@ export const DEFAULT_SETTINGS = {
   notify_email: '',
   // Where the business operates. role: Headquarters | Location | Branch. City and phone are optional.
   locations: [
-    { state: 'FL', role: 'Headquarters', city: 'Kissimmee', phone: '', blurb: 'Our main office near Orlando: RV rental pickup and returns, sales, and the STAYCAMPRV Resort.' },
+    { state: 'FL', role: 'Headquarters', city: 'Ocala', phone: '', blurb: 'Our main office in Ocala: RV rental pickup and returns, sales, and the STAYCAMPRV Resort.' },
     { state: 'AZ', role: 'Location', city: '', phone: '', blurb: 'Saguaro deserts, red rocks and the Grand Canyon. Ask us about RV rentals and campsites in Arizona.' },
     { state: 'UT', role: 'Location', city: '', phone: '', blurb: 'Canyon country and the Mighty 5 national parks. Ask us about RV rentals and campsites in Utah.' },
     { state: 'CO', role: 'Branch', city: '', phone: '', blurb: 'Rocky Mountain high country, alpine lakes and mountain towns. Ask our Colorado branch about your trip.' }
@@ -281,7 +281,7 @@ export const DEFAULT_SETTINGS = {
   seo_title: '',
   seo_description: '',
   google_site_verification: '',
-  address: '1200 Sunrise Palm Way, Kissimmee, FL 34746',
+  address: '5741 S. Pine Avenue (Highway 441), Ocala, FL 34480',
   hours: 'Mon–Sat 8:00 AM – 6:00 PM · Sun 10:00 AM – 4:00 PM',
   tax_rate: 0.07,
   // Payment is collected by staff, not online. Shown in booking emails and on the guest's booking page.
@@ -393,7 +393,7 @@ async function seedInventory() {
     { section: 'D · Extended Stay', prefix: 'D', count: 6, site_type: 'Back-in', max_length: 45, amps: '50', nightly_rate: 49, weekly_rate: 299, monthly_rate: 795, min_nights: 30,
       description: 'Monthly and seasonal sites for snowbirds and traveling professionals. Metered electric, mail service, and a 30-night minimum stay.', features: ['30-night minimum', 'Metered electric', 'Mail service', 'Storage shed allowed'] }
   ];
-  const resortId = (await insert('campgrounds', { ...DEFAULT_CAMPGROUND, address: DEFAULT_SETTINGS.address, amenities: DEFAULT_SETTINGS.amenities })).lastInsertRowid;
+  const resortId = (await insert('campgrounds', { ...DEFAULT_CAMPGROUND, address: '1200 Sunrise Palm Way, Kissimmee, FL 34746', amenities: DEFAULT_SETTINGS.amenities })).lastInsertRowid;
   const keysId = (await insert('campgrounds', {
     name: 'STAYCAMPRV Keys Campground', location: 'Marathon, FL', address: 'Overseas Hwy, Marathon, FL 33050', sort_order: 2,
     description: 'A small, quiet campground in the Middle Keys with oceanfront and tropical garden pads, a boat ramp, and sunsets over Florida Bay.',
