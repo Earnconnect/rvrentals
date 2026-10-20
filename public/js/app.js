@@ -443,6 +443,7 @@
     const locCounts = {};
     for (const r of rvs.filter(r => r.status === 'active')) { const k = R.rvState(r, S); (locCounts[k] ||= { camps: 0, rvs: 0 }).rvs++; }
     for (const c of campList) { const k = R.campState(c); (locCounts[k] ||= { camps: 0, rvs: 0 }).camps++; }
+    for (const l of lots.filter(isPrivate)) { const k = R.stateOf(l.campground_location); (locCounts[k] ||= { camps: 0, rvs: 0 }).sites = (locCounts[k].sites || 0) + 1; }
     const homeLocs = R.locationsFrom(S);
     const active = rvs.filter(r => r.status === 'active');
     const featured = (active.filter(r => r.featured).length ? active.filter(r => r.featured) : active).slice(0, 3);
@@ -633,6 +634,7 @@
   // ---------------- RV sites & campgrounds ----------------
   const tileState = (l, len) => l.status !== 'active' ? 'maint' : len && l.max_length < len ? 'toosmall' : !l.available ? 'booked' : 'avail';
   const stayQs = (q, extra = {}) => qsOf({ start: isDate(q.start) && isDate(q.end) && q.end > q.start ? q.start : '', end: isDate(q.start) && isDate(q.end) && q.end > q.start ? q.end : '', len: q.len, ...extra });
+  const isPrivate = l => !l.campground_id;   // a standalone site, not part of a campground
   function lotCard(l, q = {}) {
     const st = tileState(l, Number(q.len) || 0), dated = isDate(q.start) && isDate(q.end);
     const badge = { maint: '<span class="badge warn">Closed for maintenance</span>', toosmall: `<span class="badge gray">Fits up to ${l.max_length} ft</span>`, booked: `<span class="badge gray">${dated ? 'Booked for your dates' : 'Occupied tonight'}</span>`, avail: '' }[st];
@@ -695,7 +697,7 @@
     const dq = dated ? { start: q.start, end: q.end } : {};
     const [camps, lots] = await Promise.all([api('/campgrounds' + qsOf(dq)), api('/lots' + qsOf({ ...dq, campground: q.campground }))]);
     const len = Number(q.len) || 0;
-    const campStates = [...new Set(camps.map(c => R.campState(c)).filter(Boolean))];
+    const campStates = [...new Set([...camps.map(c => R.campState(c)), ...lots.filter(isPrivate).map(l => R.stateOf(l.campground_location))].filter(Boolean))];
     const inState = l => !q.state || R.stateOf(l.campground_location) === q.state;
     const list = sortLots(lots.filter(inState), q);
     const open = list.filter(l => tileState(l, len) === 'avail');
@@ -1100,7 +1102,7 @@
   const R = window.RFRegions;
   const roleLabel = l => l.hq ? 'Headquarters' : l.role === 'Branch' ? 'Branch' : 'Location';
   function locationCard(l, counts = {}) {
-    const c = counts[l.code] || { camps: 0, rvs: 0 };
+    const c = counts[l.code] || { camps: 0, rvs: 0 }, sites = c.sites || 0;
     return `<a class="card loc-card" href="/locations/${l.slug}">
       <span class="badge ${l.hq ? 'sun' : ''}">${roleLabel(l)}</span>
       <div class="media">${photo(l.photo, `${l.name} RV trip`)}</div>
@@ -1108,15 +1110,16 @@
         <span class="eyebrow">${esc(l.city ? `${l.city}, ${l.code}` : l.code)}</span>
         <h3>${esc(l.name)}</h3>
         ${l.blurb ? `<p class="small muted camp-desc">${esc(l.blurb)}</p>` : ''}
-        <div class="specs">${c.rvs ? `<span class="chip">${c.rvs} RV rental${c.rvs === 1 ? '' : 's'}</span>` : ''}${c.camps ? `<span class="chip">${c.camps} campground${c.camps === 1 ? '' : 's'}</span>` : ''}${!c.rvs && !c.camps ? '<span class="chip">Trips by request</span>' : ''}</div>
+        <div class="specs">${c.rvs ? `<span class="chip">${c.rvs} RV rental${c.rvs === 1 ? '' : 's'}</span>` : ''}${c.camps ? `<span class="chip">${c.camps} campground${c.camps === 1 ? '' : 's'}</span>` : ''}${sites ? `<span class="chip">${sites} private RV site${sites === 1 ? '' : 's'}</span>` : ''}${!c.rvs && !c.camps && !sites ? '<span class="chip">Trips by request</span>' : ''}</div>
       </div></a>`;
   }
   async function locationCounts() {
-    const [rvs, camps] = await Promise.all([api('/rvs'), api('/campgrounds')]);
-    const counts = {};
+    const [rvs, camps, lots] = await Promise.all([api('/rvs'), api('/campgrounds'), api('/lots').catch(() => [])]);
+    const counts = {}, privateSites = lots.filter(isPrivate);
     for (const r of rvs.filter(r => r.status === 'active')) { const k = R.rvState(r, S); (counts[k] ||= { camps: 0, rvs: 0 }).rvs++; }
     for (const c of camps) { const k = R.campState(c); (counts[k] ||= { camps: 0, rvs: 0 }).camps++; }
-    return { rvs, camps, counts };
+    for (const l of privateSites) { const k = R.stateOf(l.campground_location); (counts[k] ||= { camps: 0, rvs: 0 }).sites = (counts[k].sites || 0) + 1; }
+    return { rvs, camps, privateSites, counts };
   }
   async function locations() {
     const locs = R.locationsFrom(S), { counts } = await locationCounts();
@@ -1133,8 +1136,9 @@
   async function locationPage([slug]) {
     const l = R.locationsFrom(S).find(x => x.slug === slug);
     if (!l) { app.innerHTML = `<div class="container loading"><h2>Location not found</h2><a class="btn btn-dark" href="/locations">All locations</a></div>`; return; }
-    const { rvs, camps } = await locationCounts();
+    const { rvs, camps, privateSites } = await locationCounts();
     const rs = rvs.filter(r => r.status === 'active' && R.rvState(r, S) === l.code), cs = camps.filter(c => R.campState(c) === l.code);
+    const ps = privateSites.filter(x => R.stateOf(x.campground_location) === l.code);
     app.innerHTML = `<section class="page-banner">${photo(l.photo, `${l.name} RV travel`, { large: true, eager: true })}
         <div class="container"><span class="eyebrow">${roleLabel(l)}${l.city ? ` · ${esc(l.city)}, ${l.code}` : ''}</span><h1>${esc(S.business_name.replace(/,?\s+LLC$/i, ''))} in ${esc(l.name)}</h1>
         ${l.blurb ? `<p>${esc(l.blurb)}</p>` : ''}</div></section>
@@ -1142,9 +1146,11 @@
         <div class="crumbs"><a href="/locations">Locations</a> / ${esc(l.name)}</div>
         ${cs.length ? `<div class="section-head"><div><span class="eyebrow">Stay</span><h2>Campgrounds in ${esc(l.name)}</h2></div></div>
           <div class="grid">${cs.map(c => campCard(c)).join('')}</div>` : ''}
-        ${rs.length ? `<div class="section-head" style="margin-top:${cs.length ? '3rem' : '0'}"><div><span class="eyebrow">Rent</span><h2>RVs you can pick up in ${esc(l.name)}</h2></div><a class="btn btn-ghost" href="/rentals?state=${l.code}">Check dates</a></div>
+        ${ps.length ? `<div class="section-head" style="margin-top:${cs.length ? '3rem' : '0'}"><div><span class="eyebrow">Stay</span><h2>Private RV sites in ${esc(l.name)}</h2></div></div>
+          <div class="grid">${ps.map(x => lotCard(x)).join('')}</div>` : ''}
+        ${rs.length ? `<div class="section-head" style="margin-top:${cs.length || ps.length ? '3rem' : '0'}"><div><span class="eyebrow">Rent</span><h2>RVs you can pick up in ${esc(l.name)}</h2></div><a class="btn btn-ghost" href="/rentals?state=${l.code}">Check dates</a></div>
           <div class="grid">${rs.map(r => rvCard(r)).join('')}</div>` : ''}
-        ${!rs.length && !cs.length ? `<div class="panel trip-panel"><h2 style="margin-top:0">Planning a trip in ${esc(l.name)}?</h2>
+        ${!rs.length && !cs.length && !ps.length ? `<div class="panel trip-panel"><h2 style="margin-top:0">Planning a trip in ${esc(l.name)}?</h2>
           <p class="muted">Tell us your dates, group size and where you're headed. Our ${l.role === 'Branch' ? `${esc(l.name)} branch` : 'team'} will help you find the right RV, delivery option or campsite.</p>
           <div class="band-actions"><a class="btn btn-primary" href="/contact?subject=${encodeURIComponent('Trip in ' + l.name)}">Plan my trip</a><button class="btn btn-ghost" type="button" id="locChat">Chat with us</button></div></div>` : ''}
         <div class="band" style="margin-top:3rem"><div><h2>Talk to our ${esc(l.name)} team</h2><p>Email <strong>${esc(S.email)}</strong> about bookings${S.support_email ? ` or <strong>${esc(S.support_email)}</strong> for anything else` : ''}. We reply within one business day.</p></div>

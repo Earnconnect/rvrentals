@@ -215,11 +215,12 @@ export async function seoFor(pathname, search = '') {
     const l = R.locationsFrom(s).find(x => x.slug === m[1]);
     if (!l) return notFound(b);
     const cs = (await camps()).filter(c => R.campState(c) === l.code), rs = (await rvs()).filter(r => r.status === 'active' && R.rvState(r, s) === l.code);
+    const ps = (await pads()).filter(x => !x.campground_id && R.stateOf(x.camp_location) === l.code);
     const label = l.hq ? 'Headquarters' : l.role === 'Branch' ? 'Branch' : 'Location';
     return {
       ...base, image: abs(`/img/photos/${l.photo}.jpg`),
       title: withBrand(`RV Rentals & RV Sites in ${l.name}${l.city ? ` — ${l.city}` : ''}`, b),
-      description: clip(`${b.short} in ${l.city ? l.city + ', ' : ''}${l.name}: ${rs.length ? `${rs.length} RV rental${rs.length === 1 ? '' : 's'}` : 'RV rentals'}${cs.length ? `, ${cs.length} campground${cs.length === 1 ? '' : 's'}` : ''} and RV sales. ${l.blurb || ''}`, 160),
+      description: clip(`${b.short} in ${l.city ? l.city + ', ' : ''}${l.name}: ${rs.length ? `${rs.length} RV rental${rs.length === 1 ? '' : 's'}` : 'RV rentals'}${cs.length ? `, ${cs.length} campground${cs.length === 1 ? '' : 's'}` : ''}${ps.length ? `, ${ps.length} private RV site${ps.length === 1 ? '' : 's'}` : ''} and RV sales. ${l.blurb || ''}`, 160),
       jsonld: [breadcrumbs([['Locations', '/locations'], [l.name, `/locations/${l.slug}`]]), {
         '@context': 'https://schema.org', '@type': 'LocalBusiness', name: `${b.short} ${l.name}${l.role === 'Branch' ? ' Branch' : ''}`, url: base.canonical,
         image: abs(`/img/photos/${l.photo}.jpg`), email: s.email || undefined, parentOrganization: { '@id': `${BASE_URL()}/#business` },
@@ -227,7 +228,7 @@ export async function seoFor(pathname, search = '') {
         areaServed: { '@type': 'State', name: l.name }
       }],
       body: section(`${b.short} in ${l.name}`, `${label}${l.city ? ` · ${l.city}` : ''}. ${l.blurb || ''}`,
-        [...cs.map(c => [c.name, `/sites/park/${c.id}`, `${c.pads} RV sites in ${c.location || ''}`]), ...rs.map(r => [`${r.name} — ${r.type}`, `/rentals/${r.id}`, `from ${money(r.nightly_rate)}/night`]), ['All locations', '/locations']])
+        [...cs.map(c => [c.name, `/sites/park/${c.id}`, `${c.pads} RV sites in ${c.location || ''}`]), ...ps.map(x => [padName(x), `/sites/${x.id}`, `${x.camp_location || ''}, ${money(x.nightly_rate)}/night`]), ...rs.map(r => [`${r.name} — ${r.type}`, `/rentals/${r.id}`, `from ${money(r.nightly_rate)}/night`]), ['All locations', '/locations']])
     };
   }
   if (p === '/reviews') {
