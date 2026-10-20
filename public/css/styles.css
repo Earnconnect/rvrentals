@@ -798,3 +798,7 @@ html.chat-locked, html.chat-locked body { overflow: hidden; }
   body:has(.book-bar) .site-footer { padding-bottom: 84px; }
 }
 @media print { .book-bar { display: none !important; } }
+
+/* ---------- admin: listing import ---------- */
+.import-notes ul { margin: .35rem 0 0; padding-left: 1.1rem; }
+.import-notes li { margin: .15rem 0; }

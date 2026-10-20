@@ -532,6 +532,8 @@ export async function initSchema() {
     await markChatRepliesEmailed();
   }
   if (!await hasColumn('bookings', 'hold_warned_at')) await db.exec('ALTER TABLE bookings ADD COLUMN hold_warned_at TEXT');
+  // Link a listing was imported from (staff only; used to spot duplicate imports).
+  for (const t of ['rvs', 'lots', 'sales']) if (!await hasColumn(t, 'source_url')) await db.exec(`ALTER TABLE ${t} ADD COLUMN source_url TEXT`);
   // Payments recorded before the payment history existed become one entry each, so totals keep adding up.
   await db.exec(`INSERT INTO payments (booking_id, amount, method, note, paid_on)
     SELECT id, amount_paid, 'Other', 'Recorded before payment history', substr(created_at, 1, 10) FROM bookings b

@@ -411,8 +411,9 @@
     const schema = SCHEMA[name];
     const rows = await api('/' + name);
     const camps = name === 'lots' ? (schema.fields.find(f => f.key === 'campground_id')?.options || []) : [];
-    $('#vActions').innerHTML = `<button class="btn btn-primary btn-sm" id="addBtn">+ Add ${{ rvs: 'RV', lots: 'site / pad', campgrounds: 'campground', sales: 'listing', testimonials: 'testimonial' }[name]}</button>`;
+    $('#vActions').innerHTML = `${IMPORTABLE[name] ? '<button class="btn btn-ghost btn-sm" id="importBtn">Import from a link</button>' : ''}<button class="btn btn-primary btn-sm" id="addBtn">+ Add ${{ rvs: 'RV', lots: 'site / pad', campgrounds: 'campground', sales: 'listing', testimonials: 'testimonial' }[name]}</button>`;
     $('#addBtn').onclick = () => editModal(name, null);
+    if ($('#importBtn')) $('#importBtn').onclick = () => importModal(name);
     $('#view').innerHTML = `${name === 'testimonials' ? '<p class="small muted" style="margin:-.5rem 0 1rem">Guests are invited to review their stay when you check them out, and can also review from their booking page. New reviews arrive here as <strong>pending</strong>; set one to <strong>published</strong> to show it on the website. Only publish genuine reviews from real guests, and you can add ones you received by email, phone or in person.</p>' : ''}${name === 'campgrounds' ? '<p class="small muted" style="margin:-.5rem 0 1rem">Each campground gets its own page on the website. Add its RV sites (pads) under <a href="#lots">RV Sites / Pads</a>, each with its own price.</p>' : ''}
       <div class="toolbar"><input class="grow" id="rq" placeholder="Search…" value="${esc(resFilter)}">
       ${camps.length > 1 ? `<select id="campSel"><option value="">All campgrounds</option>${camps.map(([v, l]) => `<option value="${v}" ${String(v) === campFilter ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>` : ''}
@@ -432,6 +433,47 @@
     if ($('#campSel')) $('#campSel').onchange = e => { campFilter = e.target.value; draw(); };
     draw();
     void schema;
+  }
+
+  // ---------------- import a listing ----------------
+  // Which sites each list imports from. Sites that block automatic access (like RVezy) use "Paste text".
+  const IMPORTABLE = {
+    rvs: { label: 'RV', from: 'an RV n’ GO listing', example: 'https://www.rvngo.com/rv-rentals/…' },
+    lots: { label: 'RV site', from: 'an RVProperty ad', example: 'https://rvproperty.com/ad/…' },
+    sales: { label: 'listing', from: 'an RVProperty ad', example: 'https://rvproperty.com/ad/…' }
+  };
+  function importModal(name) {
+    const info = IMPORTABLE[name];
+    const m = modal(`Import ${info.label === 'RV' ? 'an RV' : 'a ' + info.label}`, `<form id="impForm" novalidate>
+      <div id="impErr"></div>
+      <div class="tabs" style="margin:0 0 1rem"><button type="button" class="active" data-mode="link">From a link</button><button type="button" data-mode="text">Paste text</button></div>
+      <div data-pane="link">
+        <div class="field"><label>Link to ${info.from} (or another listing page)</label><input name="url" type="url" placeholder="${info.example}"></div>
+      </div>
+      <div data-pane="text" class="hidden">
+        <p class="small muted" style="margin-top:0">For sites that block automatic imports, such as RVezy: open the listing in your browser, press <strong>Ctrl+A</strong> then <strong>Ctrl+C</strong>, and paste it here.</p>
+        <div class="field"><label>Listing text</label><textarea name="text" style="min-height:160px" placeholder="Paste the listing here"></textarea></div>
+        <div class="field"><label>Photo link (optional)</label><input name="photo_url" type="url" placeholder="Right-click the main photo → Copy image address"></div>
+      </div>
+      <label class="check"><input type="checkbox" name="ok"> <span>I own this listing, or have the owner’s permission to advertise it on our website.</span></label>
+      <p class="small muted" style="margin:.75rem 0 0">The details open in the normal form for you to check. Nothing is published until you click Create. Seller phone numbers and emails are never copied.</p>
+    </form>`, '<button class="btn btn-ghost" data-close>Cancel</button><button class="btn btn-primary" id="impGo">Import</button>');
+    const form = $('#impForm', m.el);
+    let mode = 'link';
+    $$('[data-mode]', m.el).forEach(b => b.onclick = () => {
+      mode = b.dataset.mode;
+      $$('[data-mode]', m.el).forEach(x => x.classList.toggle('active', x === b));
+      $$('[data-pane]', m.el).forEach(p => p.classList.toggle('hidden', p.dataset.pane !== mode));
+    });
+    $('#impGo', m.el).onclick = async () => {
+      const d = formData(form), err = $('#impErr', m.el);
+      if (!d.ok) { err.innerHTML = '<div class="alert alert-error">Please confirm you own this listing or have permission to advertise it.</div>'; return; }
+      const btn = $('#impGo', m.el); btn.disabled = true; btn.textContent = 'Reading the listing…'; err.innerHTML = '';
+      try {
+        const r = await api('/import', { method: 'POST', body: mode === 'link' ? { target: name, url: d.url } : { target: name, text: d.text, photo_url: d.photo_url } });
+        m.close(); editModal(name, null, r);
+      } catch (e) { err.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; btn.disabled = false; btn.textContent = 'Import'; }
+    };
   }
 
   function fieldHtml(f, v) {
@@ -493,12 +535,15 @@
     }
     throw new Error('That photo is too large. Please choose a smaller one.');
   }
-  function editModal(name, row) {
+  function editModal(name, row, imported) {
     const schema = SCHEMA[name];
     const defaults = { rvs: { status: 'active', min_nights: 2, miles_per_night: 100, color: '#F26B3A', type: 'Class C Motorhome' }, lots: { status: 'active', min_nights: 1, water: 1, sewer: 1, wifi: 1, amps: '30/50', max_length: 40, site_type: 'Back-in', campground_id: campFilter || schema.fields.find(f => f.key === 'campground_id')?.options[0]?.[0] }, testimonials: { status: 'published', rating: 5 }, campgrounds: { status: 'active', amenities: ['Full hookups', 'Free Wi-Fi', 'Bathhouse & laundry', 'Pet friendly'] }, sales: { status: 'available', category: 'rv', condition: 'Used', color: '#1F6F5C' } }[name];
-    const data = row || defaults;
-    const title = row ? `Edit ${row[schema.title]}` : `Add ${schema.label.replace(/s$/, '').replace('Fleet', 'RV')}`;
-    const m = modal(title, `<form id="edit" class="form-grid" novalidate><div class="full" id="eErr"></div>${schema.fields.map(f => fieldHtml(f, data[f.key])).join('')}</form>`,
+    // Imported drafts fill the form; empty values keep the defaults.
+    const draft = imported ? Object.fromEntries(Object.entries(imported.draft).filter(([, v]) => v !== null && v !== '' && !(Array.isArray(v) && !v.length))) : {};
+    const data = row || { ...defaults, ...draft };
+    const title = row ? `Edit ${row[schema.title]}` : `Add ${schema.label.replace(/s$/, '').replace('Fleet', 'RV')}${imported ? ` · imported from ${imported.source}` : ''}`;
+    const notes = imported ? `<div class="full alert alert-warn import-notes"><strong>Check before saving:</strong><ul>${imported.notes.map(n => `<li>${esc(n)}</li>`).join('')}</ul></div>` : '';
+    const m = modal(title, `<form id="edit" class="form-grid" novalidate><div class="full" id="eErr"></div>${notes}${schema.fields.map(f => fieldHtml(f, data[f.key])).join('')}</form>`,
       `${row ? '<button class="btn btn-danger left" id="delBtn">Delete</button>' : ''}<button class="btn btn-ghost" data-close>Cancel</button><button class="btn btn-primary" id="saveBtn">${row ? 'Save changes' : 'Create'}</button>`);
     const form = $('#edit', m.el);
     const imgInput = form.elements.image_url;

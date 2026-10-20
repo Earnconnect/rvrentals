@@ -4,6 +4,8 @@
   const $$ = (s, el = document) => [...el.querySelectorAll(s)];
   const app = $('#app');
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  // Long descriptions keep their paragraphs (blank lines) and line breaks.
+  const paras = s => String(s ?? '').trim().split(/\n\s*\n/).map(p => `<p>${esc(p.trim()).replace(/\n/g, '<br>')}</p>`).join('');
   const money = n => '$' + Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
   const money2 = n => '$' + Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const pad2 = n => String(n).padStart(2, '0');
@@ -616,7 +618,7 @@
           <div class="detail-title"><span class="eyebrow">${esc(rv.type)}</span><h1>${esc(rv.name)}</h1>
             <p class="muted" style="font-size:1.05rem">${esc([rv.year, rv.make, rv.model].filter(Boolean).join(' '))}</p></div>
           <div class="spec-grid">${specs.map(([k, v]) => `<div class="spec"><span>${esc(k)}</span><strong>${esc(v)}</strong></div>`).join('')}</div>
-          <h3>About this RV</h3><p>${esc(rv.description)}</p>
+          <h3>About this RV</h3>${paras(rv.description)}
           ${rv.features?.length ? `<h3>Features</h3><ul class="feature-list">${rv.features.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}
           <h3>Good to know</h3>
           <div class="policy"><strong>Pickup & return.</strong> Pickup is at ${esc(S.rv_pickup_time)} and return by ${esc(S.rv_return_time)}. ${esc(S.rental_policy)}</div>
@@ -764,9 +766,9 @@
           <div class="detail-title"><span class="eyebrow">${esc(camp.name || '')}${camp.name ? ' · ' : ''}${esc(lot.section)}</span><h1>RV Site ${esc(lot.code)}</h1>
             ${camp.location ? `<p class="muted" style="font-size:1.05rem">${esc(camp.location)}</p>` : ''}</div>
           <div class="spec-grid">${specs.map(([k, v]) => `<div class="spec"><span>${esc(k)}</span><strong>${esc(v)}</strong></div>`).join('')}</div>
-          <h3>About this site</h3><p>${esc(lot.description || '')}</p>
+          <h3>About this site</h3>${paras(lot.description)}
           ${lot.features?.length ? `<ul class="feature-list">${lot.features.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}
-          ${camp.description ? `<h3>About ${esc(camp.name)}</h3><p>${esc(camp.description)}</p>` : ''}
+          ${camp.description ? `<h3>About ${esc(camp.name)}</h3>${paras(camp.description)}` : ''}
           <h3>Campground amenities</h3><ul class="feature-list">${amen.map(a => `<li>${esc(a)}</li>`).join('')}</ul>
           ${camp.address ? `<p class="small muted">${esc(camp.address)} · <a target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(camp.address)}">Open in Maps</a></p>` : ''}
           <div class="policy"><strong>Park rules.</strong> Check-in ${esc(S.check_in_time)}, check-out ${esc(S.check_out_time)}. ${esc(S.site_policy)}</div>
@@ -820,7 +822,7 @@
           <div class="detail-title"><span class="eyebrow">${esc(s.type || '')}</span><h1>${esc(s.title)}</h1>
             <div style="display:flex;gap:.75rem;align-items:center;flex-wrap:wrap"><span class="price" style="font-size:2rem">${money(s.price)}</span>${statusPill(s.status)}</div></div>
           <div class="spec-grid">${specs.map(([k, v]) => `<div class="spec"><span>${esc(k)}</span><strong>${esc(v)}</strong></div>`).join('')}</div>
-          <h3>Description</h3><p>${esc(s.description)}</p>
+          <h3>Description</h3>${paras(s.description)}
           ${s.features?.length ? `<h3>Highlights</h3><ul class="feature-list">${s.features.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}
           <div class="panel" style="margin-bottom:2rem">
             <h3>Payment estimator</h3>

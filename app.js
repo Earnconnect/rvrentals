@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { db, getSettings, refreshSettings, setSetting, DEFAULT_SETTINGS, hashPassword, verifyPassword, UPLOAD_DIR, SERVERLESS, initSchema, seedIfEmpty } from './db.js';
 import './public/js/regions.js';
 import * as mail from './mailer.js';
+import { importListing, ImportError } from './importer.js';
 import { seoFor, renderPage, seoJson, sitemapXml, robotsTxt } from './seo.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -69,9 +70,11 @@ const isDate = s => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) && !N
 const nightsBetween = (a, b) => Math.round((Date.parse(b + 'T00:00:00Z') - Date.parse(a + 'T00:00:00Z')) / 86400000);
 const addDays = (s, n) => { const d = new Date(s + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
 
+// Public shape of a row. The link a listing was imported from is staff-only, so it's dropped here
+// (the admin list adds it back).
 function hydrate(row) {
   if (!row) return row;
-  const o = { ...row };
+  const { source_url, ...o } = row;
   if ('features' in o) o.features = parseJSON(o.features, []);
   if ('addons' in o) o.addons = parseJSON(o.addons, []);
   if ('amenities' in o) o.amenities = parseJSON(o.amenities, []);
@@ -658,7 +661,8 @@ const SCHEMAS = {
       { key: 'color', label: 'Accent color', type: 'color' },
       { key: 'image_url', label: 'Photo', type: 'image' },
       { key: 'description', label: 'Description', type: 'textarea' },
-      { key: 'features', label: 'Features (one per line)', type: 'list' }
+      { key: 'features', label: 'Features (one per line)', type: 'list' },
+      { key: 'source_url', label: 'Imported from (link, staff only)', type: 'text' }
     ]
   },
   testimonials: {
@@ -702,7 +706,8 @@ const SCHEMAS = {
       { key: 'status', label: 'Status', type: 'select', options: ['active', 'maintenance', 'closed'] },
       { key: 'image_url', label: 'Photo', type: 'image' },
       { key: 'description', label: 'Description', type: 'textarea' },
-      { key: 'features', label: 'Features (one per line)', type: 'list' }
+      { key: 'features', label: 'Features (one per line)', type: 'list' },
+      { key: 'source_url', label: 'Imported from (link, staff only)', type: 'text' }
     ]
   },
   sales: {
@@ -721,7 +726,8 @@ const SCHEMAS = {
       { key: 'color', label: 'Accent color', type: 'color' },
       { key: 'image_url', label: 'Photo', type: 'image' },
       { key: 'description', label: 'Description', type: 'textarea' },
-      { key: 'features', label: 'Features (one per line)', type: 'list' }
+      { key: 'features', label: 'Features (one per line)', type: 'list' },
+      { key: 'source_url', label: 'Imported from (link, staff only)', type: 'text' }
     ]
   }
 };
@@ -958,7 +964,8 @@ for (const [resource, schema] of Object.entries(SCHEMAS)) {
     campgrounds: `SELECT c.*, (SELECT COUNT(*) FROM lots l WHERE l.campground_id = c.id) AS pad_count,
       (SELECT MIN(nightly_rate) FROM lots l WHERE l.campground_id = c.id AND l.status = 'active') AS from_rate FROM campgrounds c ORDER BY c.sort_order, c.name`
   };
-  admin.get(`/${resource}`, async (req, res) => res.json((await db.prepare(LIST_SQL[resource] || `SELECT * FROM ${resource} ORDER BY id`).all()).map(hydrate)));
+  admin.get(`/${resource}`, async (req, res) => res.json((await db.prepare(LIST_SQL[resource] || `SELECT * FROM ${resource} ORDER BY id`).all())
+    .map(r => ({ ...hydrate(r), ...(r.source_url !== undefined ? { source_url: r.source_url } : {}) }))));
   admin.post(`/${resource}`, async (req, res) => {
     const rec = await buildRecord(schema, req.body || {}, false);
     if (resource === 'sales' && rec.status === 'sold') rec.sold_at = todayStr();
@@ -1112,6 +1119,16 @@ admin.post('/password', async (req, res) => {
   if (next.length < 10) throw new HttpError(400, 'New password must be at least 10 characters.');
   await db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hashPassword(next), user.id);
   res.json({ ok: true });
+});
+// Fill in an add form from a listing link (RV n' GO, RVProperty, others) or text pasted from a listing.
+admin.post('/import', async (req, res) => {
+  const body = req.body || {};
+  try {
+    res.json(await importListing({ target: body.target, url: str(body.url, 1000), text: str(body.text, 20000), photoUrl: str(body.photo_url, 1000) }));
+  } catch (e) {
+    if (e instanceof ImportError) throw new HttpError(422, e.message);
+    throw e;
+  }
 });
 admin.post('/upload', async (req, res) => {
   const m = /^data:(image\/(png|jpeg|webp|gif));base64,(.+)$/.exec(String(req.body?.data || ''));
