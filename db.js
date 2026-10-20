@@ -22,7 +22,8 @@ export const client = createClient({
 
 // A small prepared-statement style wrapper so queries read like before: await db.prepare(sql).get(...args)
 const rowsOf = rs => rs.rows.map(r => Object.fromEntries(rs.columns.map((c, i) => [c, r[i]])));
-const argsOf = a => a.map(v => (v === undefined ? null : v));
+// undefined and NaN (e.g. an id parsed from a bad URL) become NULL, which simply matches nothing.
+const argsOf = a => a.map(v => (v === undefined || Number.isNaN(v) ? null : v));
 export const db = {
   prepare: sql => ({
     all: async (...a) => rowsOf(await client.execute({ sql, args: argsOf(a) })),
@@ -534,6 +535,11 @@ export async function initSchema() {
   if (!await hasColumn('bookings', 'hold_warned_at')) await db.exec('ALTER TABLE bookings ADD COLUMN hold_warned_at TEXT');
   // Link a listing was imported from (staff only; used to spot duplicate imports).
   for (const t of ['rvs', 'lots', 'sales']) if (!await hasColumn(t, 'source_url')) await db.exec(`ALTER TABLE ${t} ADD COLUMN source_url TEXT`);
+  // Standalone RV sites (no campground) carry their own name, location, address and amenities.
+  if (!await hasColumn('lots', 'location')) {
+    await db.exec(`ALTER TABLE lots ADD COLUMN name TEXT; ALTER TABLE lots ADD COLUMN location TEXT;
+      ALTER TABLE lots ADD COLUMN address TEXT; ALTER TABLE lots ADD COLUMN amenities TEXT DEFAULT '[]';`);
+  }
   // Payments recorded before the payment history existed become one entry each, so totals keep adding up.
   await db.exec(`INSERT INTO payments (booking_id, amount, method, note, paid_on)
     SELECT id, amount_paid, 'Other', 'Recorded before payment history', substr(created_at, 1, 10) FROM bookings b

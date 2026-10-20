@@ -61,7 +61,7 @@
     if (kind === 'sale' && item.category === 'lot') return /lake|water/i.test((item.title || '') + (item.location || '')) ? 'lot-lake' : pick(POOLS.lot, item.title);
     return rvKey(item.type, item.name || item.title || item.id, item.make);
   }
-  const altFor = (kind, item = {}) => kind === 'lot' ? `RV site ${item.code || ''}${item.campground_name ? ' at ' + item.campground_name : ''}` : kind === 'camp' ? (item.name || 'Campground') : (item.name || item.title || item.type || 'RV');
+  const altFor = (kind, item = {}) => kind === 'lot' ? (item.campground_name ? `RV site ${item.code || ''} at ${item.campground_name}` : item.name || `RV site ${item.code || ''}`) : kind === 'camp' ? (item.name || 'Campground') : (item.name || item.title || item.type || 'RV');
   const motorized = item => /class|van|motorhome/i.test(item?.type || '');
 
   // Brand assets live in /img (generated SVGs with outlined lettering, so they render identically everywhere).

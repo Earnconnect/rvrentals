@@ -639,8 +639,8 @@
     return `<a class="card ${st === 'avail' ? '' : 'unavailable'}" href="/sites/${l.id}${stayQs(q)}">${badge}
       <div class="media">${art('lot', l)}</div>
       <div class="content">
-        <span class="eyebrow">${esc(l.campground_name || '')}${l.campground_name ? ' · ' : ''}${esc(l.section)}</span>
-        <h3>Site ${esc(l.code)}</h3>
+        <span class="eyebrow">${l.campground_name ? `${esc(l.campground_name)} · ${esc(l.section)}` : 'Private RV site'}</span>
+        <h3>${l.campground_name ? `Site ${esc(l.code)}` : esc(l.name || `Site ${l.code}`)}</h3>
         ${l.campground_location ? `<div class="meta">${esc(l.campground_location)}</div>` : ''}
         <div class="specs"><span class="chip">${esc(l.site_type)}</span><span class="chip">Up to ${esc(l.max_length)} ft</span><span class="chip">${esc(l.amps)} amp</span>${l.min_nights > 1 ? `<span class="chip">${l.min_nights}-night min</span>` : ''}</div>
         <div class="price-row"><div class="price">${money(l.nightly_rate)} <small>/ night</small></div><span class="small muted">${l.monthly_rate ? money(l.monthly_rate) + '/mo' : l.weekly_rate ? money(l.weekly_rate) + '/wk' : ''}</span></div>
@@ -753,25 +753,28 @@
   async function siteDetail([id], q) {
     const lot = await api('/lots/' + id);
     const gal = gallery('lot', lot);
-    const camp = lot.campground || {};
+    const camp = lot.campground || {}, standalone = !lot.campground;
+    const title = standalone ? (lot.name || `RV Site ${lot.code}`) : `RV Site ${lot.code}`;
+    const where = camp.location || lot.location, address = camp.address || lot.address;
     const hook = [lot.water && 'Water', lot.sewer && 'Sewer', lot.amps + ' amp electric', lot.wifi && 'Wi-Fi'].filter(Boolean).join(' · ');
-    const specs = [['Campground', camp.name], ['Location', camp.location], ['Section', lot.section], ['Site type', lot.site_type], ['Max rig length', lot.max_length + ' ft'], ['Hookups', hook],
+    const specs = [['Campground', camp.name], ['Location', where], ['Section', standalone ? '' : lot.section], ['Site type', lot.site_type], ['Max rig length', lot.max_length + ' ft'], ['Hookups', hook],
       ['Weekly', lot.weekly_rate && money(lot.weekly_rate)], ['Monthly', lot.monthly_rate && money(lot.monthly_rate)]].filter(x => x[1]);
-    const amen = camp.amenities?.length ? camp.amenities : (S.amenities || []);
+    // Standalone sites list their own amenities; campground sites show the campground's (or the resort's).
+    const amen = standalone ? (lot.amenities || []) : camp.amenities?.length ? camp.amenities : (S.amenities || []);
     app.innerHTML = `<div class="container">
-      <div class="crumbs"><a href="/sites">RV sites</a> / ${camp.id ? `<a href="/sites/park/${camp.id}${stayQs(q)}">${esc(camp.name)}</a> / ` : ''}Site ${esc(lot.code)}</div>
+      <div class="crumbs"><a href="/sites">RV sites</a> / ${camp.id ? `<a href="/sites/park/${camp.id}${stayQs(q)}">${esc(camp.name)}</a> / ` : ''}${esc(standalone ? title : `Site ${lot.code}`)}</div>
       <div class="detail">
         <div>
           ${gal.html}
-          <div class="detail-title"><span class="eyebrow">${esc(camp.name || '')}${camp.name ? ' · ' : ''}${esc(lot.section)}</span><h1>RV Site ${esc(lot.code)}</h1>
-            ${camp.location ? `<p class="muted" style="font-size:1.05rem">${esc(camp.location)}</p>` : ''}</div>
+          <div class="detail-title"><span class="eyebrow">${standalone ? 'Private RV site' : `${esc(camp.name || '')} · ${esc(lot.section)}`}</span><h1>${esc(title)}</h1>
+            ${where ? `<p class="muted" style="font-size:1.05rem">${esc(where)}</p>` : ''}</div>
           <div class="spec-grid">${specs.map(([k, v]) => `<div class="spec"><span>${esc(k)}</span><strong>${esc(v)}</strong></div>`).join('')}</div>
           <h3>About this site</h3>${paras(lot.description)}
           ${lot.features?.length ? `<ul class="feature-list">${lot.features.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}
           ${camp.description ? `<h3>About ${esc(camp.name)}</h3>${paras(camp.description)}` : ''}
-          <h3>Campground amenities</h3><ul class="feature-list">${amen.map(a => `<li>${esc(a)}</li>`).join('')}</ul>
-          ${camp.address ? `<p class="small muted">${esc(camp.address)} · <a target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(camp.address)}">Open in Maps</a></p>` : ''}
-          <div class="policy"><strong>Park rules.</strong> Check-in ${esc(S.check_in_time)}, check-out ${esc(S.check_out_time)}. ${esc(S.site_policy)}</div>
+          ${amen.length ? `<h3>${standalone ? 'Amenities' : 'Campground amenities'}</h3><ul class="feature-list">${amen.map(a => `<li>${esc(a)}</li>`).join('')}</ul>` : ''}
+          ${address ? `<p class="small muted">${esc(address)} · <a target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}">Open in Maps</a></p>` : ''}
+          <div class="policy"><strong>${standalone ? 'Site rules.' : 'Park rules.'}</strong> Check-in ${esc(S.check_in_time)}, check-out ${esc(S.check_out_time)}. ${esc(S.site_policy)}</div>
           <div class="policy"><strong>Cancellation.</strong> ${esc(S.cancellation_policy)}</div>
           ${camp.id ? `<a class="btn btn-ghost" href="/sites/park/${camp.id}${stayQs(q)}">See all sites at ${esc(camp.name)}</a>` : ''}
         </div>

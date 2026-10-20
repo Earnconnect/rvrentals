@@ -61,8 +61,10 @@ const camps = () => db.prepare(`SELECT c.*, (SELECT COUNT(*) FROM lots l WHERE l
   (SELECT MIN(nightly_rate) FROM lots l WHERE l.campground_id = c.id AND l.status = 'active') from_rate,
   (SELECT MAX(nightly_rate) FROM lots l WHERE l.campground_id = c.id AND l.status = 'active') to_rate
   FROM campgrounds c WHERE c.status = 'active' ORDER BY c.featured DESC, c.sort_order, c.name`).all();
-const pads = () => db.prepare(`SELECT l.*, c.name AS camp_name, c.location AS camp_location FROM lots l JOIN campgrounds c ON c.id = l.campground_id
-  WHERE l.status != 'closed' AND c.status = 'active' ORDER BY c.sort_order, c.name, l.code`).all();
+const pads = () => db.prepare(`SELECT l.*, c.name AS camp_name, COALESCE(c.location, l.location) AS camp_location FROM lots l LEFT JOIN campgrounds c ON c.id = l.campground_id
+  WHERE l.status != 'closed' AND (l.campground_id IS NULL OR c.status = 'active') ORDER BY l.campground_id IS NOT NULL, c.sort_order, c.name, l.code`).all();
+// "RV Site A-01 — STAYCAMPRV Resort", or a standalone site's own listing name.
+const padName = x => x.camp_name ? `RV Site ${x.code} at ${x.camp_name}` : (x.name || `RV Site ${x.code}${x.camp_location ? ' in ' + x.camp_location : ''}`);
 const listings = () => db.prepare(`SELECT * FROM sales WHERE status != 'sold' OR sold_at >= date('now', '-60 days')
   ORDER BY CASE status WHEN 'available' THEN 0 WHEN 'pending' THEN 1 ELSE 2 END, featured DESC, created_at DESC`).all();
 
@@ -127,7 +129,7 @@ export async function seoFor(pathname, search = '') {
       jsonld: [breadcrumbs([['RV sites', '/sites']]), itemList(c.map(x => [x.name, `/sites/park/${x.id}`]))],
       body: section(`RV sites and campgrounds in ${R.regionsLabel(s)}`, 'Every site has water, sewer, electric and Wi-Fi. Weekly and monthly rates apply automatically.',
         [...c.map(x => [x.name, `/sites/park/${x.id}`, `${x.location || ''} · ${x.pads} sites${x.from_rate ? ` from ${money(x.from_rate)}/night` : ''}`]),
-         ...l.map(x => [`RV Site ${x.code} — ${x.camp_name}`, `/sites/${x.id}`, `${x.site_type}, up to ${x.max_length} ft, ${money(x.nightly_rate)}/night`])])
+         ...l.map(x => [padName(x), `/sites/${x.id}`, `${x.site_type}, up to ${x.max_length} ft, ${money(x.nightly_rate)}/night`])])
     };
   }
   if ((m = p.match(/^\/sites\/park\/(\d+)$/))) {
@@ -155,14 +157,14 @@ export async function seoFor(pathname, search = '') {
     if (!x) return notFound(b);
     return {
       ...base, image: photo(x, 'lot'),
-      title: withBrand(`RV Site ${x.code} at ${x.camp_name}${x.camp_location ? ', ' + x.camp_location : ''}`, b),
-      description: clip(`${x.site_type} RV site for rigs up to ${x.max_length} ft with ${x.amps} amp electric, water and sewer at ${x.camp_name}. ${money(x.nightly_rate)}/night${x.monthly_rate ? `, ${money(x.monthly_rate)}/month` : ''}. ${x.description || ''}`, 158),
-      jsonld: [breadcrumbs([['RV sites', '/sites'], [x.camp_name, `/sites/park/${x.campground_id}`], [`Site ${x.code}`, `/sites/${x.id}`]]), {
+      title: withBrand(`${padName(x)}${x.camp_name && x.camp_location ? ', ' + x.camp_location : ''}`, b),
+      description: clip(`${x.site_type} RV site for rigs up to ${x.max_length} ft with ${x.amps} amp electric, water and sewer ${x.camp_name ? 'at ' + x.camp_name : 'in ' + (x.camp_location || 'a private setting')}. ${money(x.nightly_rate)}/night${x.monthly_rate ? `, ${money(x.monthly_rate)}/month` : ''}. ${x.description || ''}`, 158),
+      jsonld: [breadcrumbs(x.camp_name ? [['RV sites', '/sites'], [x.camp_name, `/sites/park/${x.campground_id}`], [`Site ${x.code}`, `/sites/${x.id}`]] : [['RV sites', '/sites'], [padName(x), `/sites/${x.id}`]]), {
         '@context': 'https://schema.org', '@type': 'CampingPitch', name: `RV Site ${x.code}`, description: x.description, image: photo(x, 'lot'), url: base.canonical,
-        containedInPlace: { '@type': 'Campground', name: x.camp_name, url: `${BASE_URL()}/sites/park/${x.campground_id}` },
+        containedInPlace: x.camp_name ? { '@type': 'Campground', name: x.camp_name, url: `${BASE_URL()}/sites/park/${x.campground_id}` } : undefined,
         amenityFeature: [x.water && 'Water hookup', x.sewer && 'Sewer hookup', `${x.amps} amp electric`, x.wifi && 'Wi-Fi'].filter(Boolean).map(a => ({ '@type': 'LocationFeatureSpecification', name: a, value: true }))
       }],
-      body: section(`RV Site ${x.code} at ${x.camp_name}`, x.description, [[`All sites at ${x.camp_name}`, `/sites/park/${x.campground_id}`]],
+      body: section(padName(x), x.description, x.camp_name ? [[`All sites at ${x.camp_name}`, `/sites/park/${x.campground_id}`]] : [['All RV sites', '/sites']],
         `<p>${esc(x.section)} · ${esc(x.site_type)} · up to ${x.max_length} ft · ${esc(x.amps)} amp · ${money(x.nightly_rate)}/night</p>`)
     };
   }

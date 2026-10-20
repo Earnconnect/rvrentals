@@ -267,9 +267,10 @@ function toLot(f, notes) {
   const minN = minM ? (num(minM[1] || minM[3]) * (/month/i.test(minM[2] || minM[4]) ? 30 : 1)) : (r.monthly && !r.nightly ? 30 : 1);
   const extras = [full && 'Full hookups', /wi-?fi|internet/i.test(all) && 'Wi-Fi', /concrete\s*pad/i.test(all) && 'Concrete pad', /patio/i.test(all) && 'Patio',
     /pool/i.test(all) && 'Pool access', /pet/i.test(all) && 'Pet friendly', /laundry/i.test(all) && 'Laundry', /gated/i.test(all) && 'Gated community'].filter(Boolean);
-  notes.push('Choose the campground and enter a site number before saving.');
+  notes.push('Saved as a standalone site. To add it to one of your campgrounds instead, choose the campground and enter a site number.');
   return {
-    code: '', section: /season/i.test(all) ? 'Seasonal' : /month|long[\s-]*term|extended/i.test(all) ? 'Extended Stay' : 'Standard',
+    standalone: true, name: tidyTitle(f.title).slice(0, 120), location: f.location || '',
+    code: '1', section: /season/i.test(all) ? 'Seasonal' : /month|long[\s-]*term|extended/i.test(all) ? 'Extended Stay' : 'Standard',
     site_type: /pull[\s-]*thr(?:ough|u)/i.test(all) ? 'Pull-through' : 'Back-in',
     max_length: maxLen && maxLen >= 15 && maxLen <= 100 ? maxLen : 40,
     amps: has50 && has30 ? '30/50' : has50 ? '50' : has30 ? '30' : '30/50',

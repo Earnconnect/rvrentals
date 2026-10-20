@@ -802,3 +802,9 @@ html.chat-locked, html.chat-locked body { overflow: hidden; }
 /* ---------- admin: listing import ---------- */
 .import-notes ul { margin: .35rem 0 0; padding-left: 1.1rem; }
 .import-notes li { margin: .15rem 0; }
+
+/* ---------- admin booking window: stacks on phones, long emails wrap ---------- */
+.bk-top { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; }
+@media (max-width: 640px) { .bk-top { grid-template-columns: minmax(0, 1fr); } .modal-body { padding: 1.1rem; } }
+.dl dd, .quote-line span { min-width: 0; overflow-wrap: anywhere; }
+.quote-line span:last-child { white-space: nowrap; overflow-wrap: normal; }

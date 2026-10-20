@@ -12,6 +12,8 @@
   const fmtDate = s => s ? new Date(s.slice(0, 10) + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
   const pill = s => `<span class="status-pill st-${esc(s)}">${esc(String(s ?? '').replace('_', ' '))}</span>`;
   const formData = form => Object.fromEntries(new FormData(form).entries());
+  // "Site A-01 · STAYCAMPRV Resort", or a standalone site's own listing name.
+  const siteLabel = i => i.campground_name ? `Site ${i.code} · ${i.campground_name}` : (i.name || `Site ${i.code}${i.location ? ' · ' + i.location : ''}`);
   const BOOKING_STATUSES = ['pending', 'confirmed', 'checked_in', 'completed', 'cancelled'];
   let SCHEMA = null, USER = null, counts = {};
 
@@ -189,7 +191,7 @@
     if (!b) return;
     const balance = Math.max(0, b.total - b.amount_paid);
     const m = modal(`Booking ${b.code}`, `
-      <div class="row" style="grid-template-columns:1fr 1fr;align-items:start">
+      <div class="row bk-top">
         <dl class="dl">
           <dt>${b.kind === 'rv' ? 'RV' : 'Site'}</dt><dd>${esc(b.item_name)}</dd>
           <dt>Dates</dt><dd>${fmtDate(b.start_date)} → ${fmtDate(b.end_date)} (${b.nights} nights)</dd>
@@ -314,7 +316,7 @@
     const fillItems = () => {
       const kind = f.kind.value;
       const items = kind === 'rv' ? rvs.filter(r => r.status === 'active') : lots.filter(l => l.status === 'active');
-      f.item_id.innerHTML = items.map(i => `<option value="${i.id}" ${String(i.id) === String(preset.item_id) ? 'selected' : ''}>${esc(kind === 'rv' ? `${i.name} (${i.type})` : `Site ${i.code} · ${i.campground_name || i.section}`)}</option>`).join('');
+      f.item_id.innerHTML = items.map(i => `<option value="${i.id}" ${String(i.id) === String(preset.item_id) ? 'selected' : ''}>${esc(kind === 'rv' ? `${i.name} (${i.type})` : siteLabel(i))}</option>`).join('');
       $$('[data-lot]', f).forEach(x => x.classList.toggle('hidden', kind !== 'lot'));
       const addons = (kind === 'rv' ? cfg.rv_addons : cfg.lot_addons) || [];
       $('#nbAddons', f).innerHTML = addons.map(a => `<label class="check" style="margin-bottom:.3rem"><input type="checkbox" name="addon" value="${esc(a.id)}"> ${esc(a.name)} <span class="muted">(${money(a.price)}${a.per === 'night' ? '/night' : ''})</span></label>`).join('') || '<span class="muted small">None configured</span>';
@@ -358,7 +360,7 @@
     $('#view').innerHTML = `<p class="muted small">Click a booked cell to open the booking, a grey striped cell to remove a block, or an empty cell to create a booking starting that day.
       <span style="margin-left:1rem"><span class="status-pill" style="background:var(--sun);color:#fff">confirmed</span> <span class="status-pill" style="background:#f7b98f">pending</span> <span class="status-pill" style="background:#42a5f5;color:#fff">checked in</span> <span class="status-pill" style="background:#b0bec5">completed</span> <span class="status-pill blk-key">blocked</span></span></p>
       <div class="timeline"><table><thead><tr><th class="name">${calState.kind === 'rv' ? 'RV' : 'Site'}</th>${days.map(d => { const dt = new Date(d + 'T00:00:00'); const w = dt.getDay() % 6 === 0; return `<th class="${w ? 'wknd' : ''} ${d === t ? 'today' : ''}">${dt.toLocaleDateString('en-US', { weekday: 'narrow' })}<br>${dt.getDate()}</th>`; }).join('')}</tr></thead>
-      <tbody>${items.filter(i => i.status !== 'retired' && i.status !== 'closed').map(i => `<tr><td class="name">${esc(calState.kind === 'rv' ? i.name : i.code)}${calState.kind !== 'rv' && i.campground_name ? ` <span class="small muted">${esc(i.campground_name)}</span>` : ''}${i.status !== 'active' ? ' <span class="small muted">(' + esc(i.status) + ')</span>' : ''}</td>${days.map(d => {
+      <tbody>${items.filter(i => i.status !== 'retired' && i.status !== 'closed').map(i => `<tr><td class="name">${esc(calState.kind === 'rv' ? i.name : i.campground_name ? i.code : (i.name || i.code))}${calState.kind !== 'rv' ? ` <span class="small muted">${esc(i.campground_name || 'Standalone')}</span>` : ''}${i.status !== 'active' ? ' <span class="small muted">(' + esc(i.status) + ')</span>' : ''}</td>${days.map(d => {
         const b = live.find(x => x.item_id === i.id && x.start_date <= d && x.end_date > d);
         const bl = !b && blocks.find(x => x.item_id === i.id && x.start_date <= d && x.end_date > d);
         if (bl) return `<td class="blk" data-block="${bl.id}" title="Blocked ${esc(bl.start_date)} → ${esc(bl.end_date)}${bl.reason ? ' · ' + esc(bl.reason) : ''}"></td>`;
@@ -379,7 +381,7 @@
     const units = items.filter(i => i.status !== 'retired' && i.status !== 'closed');
     const m = modal('Block dates', `<form id="blkForm" class="form-grid" novalidate>
       <div class="full" id="blkErr"></div>
-      <div class="field full"><label>${isRv ? 'RV' : 'RV site'}</label><select name="item_id">${units.map(i => `<option value="${i.id}">${esc(isRv ? i.name : `Site ${i.code}${i.campground_name ? ' · ' + i.campground_name : ''}`)}</option>`).join('')}</select></div>
+      <div class="field full"><label>${isRv ? 'RV' : 'RV site'}</label><select name="item_id">${units.map(i => `<option value="${i.id}">${esc(isRv ? i.name : siteLabel(i))}</option>`).join('')}</select></div>
       <div class="field"><label>From</label><input type="date" name="start" value="${t}" required></div>
       <div class="field"><label>Until (first open day)</label><input type="date" name="end" value="${addDays(t, 3)}" required></div>
       <div class="field full"><label>Reason (staff only)</label><input name="reason" placeholder="e.g. Maintenance, owner use, repairs"></div>
@@ -400,7 +402,7 @@
       ['Source', r => r.source === 'guest' ? `<span class="small">Guest review<br><span class="muted">${esc(r.booking_code || '')}</span></span>` : '<span class="small muted">Added by staff</span>'],
       ['Status', r => pill(r.status) + (r.featured ? ' <span class="small muted">· featured</span>' : '')]],
     campgrounds: [['Campground', r => `<strong>${esc(r.name)}</strong><br><span class="small muted">${esc(r.location || '')}</span>`], ['Pads', r => `<a href="#lots" data-camp-filter="${r.id}">${r.pad_count} site${r.pad_count === 1 ? '' : 's'}</a>`], ['From', r => r.from_rate != null ? money(r.from_rate) + '/night' : '—'], ['Order', r => r.sort_order ?? '—'], ['Status', r => pill(r.status === 'hidden' ? 'closed' : r.status).replace('>closed<', '>hidden<') + (r.featured ? ' <span class="small muted">· featured</span>' : '')]],
-    lots: [['Site', r => `<strong>${esc(r.code)}</strong>`], ['Campground', r => esc(r.campground_name || '—')], ['Section', r => esc(r.section)], ['Type', r => esc(r.site_type)], ['Max length', r => r.max_length + ' ft'], ['Nightly', r => money(r.nightly_rate)], ['Monthly', r => r.monthly_rate ? money(r.monthly_rate) : '—'], ['Status', r => pill(r.status)]],
+    lots: [['Site', r => `<strong>${esc(r.campground_name ? r.code : (r.name || r.code))}</strong>`], ['Campground', r => r.campground_name ? esc(r.campground_name) : '<span class="muted">Standalone</span>'], ['Section', r => esc(r.section)], ['Type', r => esc(r.site_type)], ['Max length', r => r.max_length + ' ft'], ['Nightly', r => money(r.nightly_rate)], ['Monthly', r => r.monthly_rate ? money(r.monthly_rate) : '—'], ['Status', r => pill(r.status)]],
     sales: [['Listing', r => `<strong>${esc(r.title)}</strong><br><span class="small muted">${esc(r.type || '')}</span>`], ['Category', r => r.category === 'lot' ? 'RV lot' : 'RV'], ['Price', r => money(r.price)], ['Condition', r => esc(r.condition)], ['Status', r => pill(r.status) + (r.status === 'sold' ? `<br><span class="small muted">${money(r.sold_price || r.price)} · ${fmtDate(r.sold_at)}</span>` : '')]]
   };
   const KIND = { rvs: 'rv', lots: 'lot', sales: 'sale', campgrounds: 'camp' };
@@ -484,8 +486,8 @@
     let input;
     switch (f.type) {
       case 'select': input = `<select id="${id}" name="${f.key}" ${req}>${f.options.map(o => `<option ${String(o) === String(val) ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`; break;
-      case 'ref': input = f.options.length
-        ? `<select id="${id}" name="${f.key}" ${req}>${f.options.map(([v, l]) => `<option value="${v}" ${String(v) === String(val) ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>`
+      case 'ref': input = f.options.length || f.none
+        ? `<select id="${id}" name="${f.key}" ${req}>${f.none ? `<option value="" ${val === '' || val === null ? 'selected' : ''}>${esc(f.none)}</option>` : ''}${f.options.map(([v, l]) => `<option value="${v}" ${String(v) === String(val) ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>`
         : `<div class="alert alert-warn" style="margin:0">Add a campground first under <a href="#campgrounds" data-close>Campgrounds</a>.</div>`; break;
       case 'int': case 'real': input = `<input id="${id}" name="${f.key}" type="number" min="0" step="${f.type === 'int' ? 1 : 0.01}" value="${esc(val)}" ${req}>`; break;
       case 'bool': return `<div class="field"><label class="check" style="margin-top:1.6rem"><input type="checkbox" name="${f.key}" ${v ? 'checked' : ''}> ${esc(f.label)}</label></div>`;
@@ -496,7 +498,7 @@
         <div style="flex:1"><input id="${id}" name="${f.key}" value="${esc(val)}" placeholder="Image URL, or upload →"><div style="display:flex;gap:.5rem;margin-top:.4rem"><label class="btn btn-ghost btn-sm" style="margin:0">Upload photo<input type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden data-upload></label><button type="button" class="btn btn-ghost btn-sm" data-clearimg>Use stock photo</button></div></div></div>`; break;
       default: input = `<input id="${id}" name="${f.key}" value="${esc(val)}" ${req}>`;
     }
-    return `<div class="field ${full}"><label for="${id}">${esc(f.label)}${f.required ? ' *' : ''}</label>${input}</div>`;
+    return `<div class="field ${full}${f.standalone ? ' standalone-only' : ''}${f.campOnly ? ' campground-only' : ''}"><label for="${id}">${esc(f.label)}${f.required ? ' *' : ''}</label>${input}</div>`;
   }
   function collect(form, fields) {
     const out = {};
@@ -541,11 +543,25 @@
     // Imported drafts fill the form; empty values keep the defaults.
     const draft = imported ? Object.fromEntries(Object.entries(imported.draft).filter(([, v]) => v !== null && v !== '' && !(Array.isArray(v) && !v.length))) : {};
     const data = row || { ...defaults, ...draft };
+    if (!row && imported?.draft.standalone) data.campground_id = '';
     const title = row ? `Edit ${row[schema.title]}` : `Add ${schema.label.replace(/s$/, '').replace('Fleet', 'RV')}${imported ? ` · imported from ${imported.source}` : ''}`;
     const notes = imported ? `<div class="full alert alert-warn import-notes"><strong>Check before saving:</strong><ul>${imported.notes.map(n => `<li>${esc(n)}</li>`).join('')}</ul></div>` : '';
     const m = modal(title, `<form id="edit" class="form-grid" novalidate><div class="full" id="eErr"></div>${notes}${schema.fields.map(f => fieldHtml(f, data[f.key])).join('')}</form>`,
       `${row ? '<button class="btn btn-danger left" id="delBtn">Delete</button>' : ''}<button class="btn btn-ghost" data-close>Cancel</button><button class="btn btn-primary" id="saveBtn">${row ? 'Save changes' : 'Create'}</button>`);
     const form = $('#edit', m.el);
+    // RV sites: name, location, address and amenities only matter for standalone sites (no campground).
+    const campSel = name === 'lots' && form.elements.campground_id;
+    if (campSel) {
+      const sync = () => {
+        const standalone = !campSel.value;
+        $$('.standalone-only', form).forEach(el => el.classList.toggle('hidden', !standalone));
+        $$('.campground-only', form).forEach(el => el.classList.toggle('hidden', standalone));
+        // A single private site still needs a site number and section behind the scenes.
+        if (standalone && !form.elements.code.value) form.elements.code.value = '1';
+        if (standalone && !form.elements.section.value) form.elements.section.value = 'Private site';
+      };
+      campSel.addEventListener('change', sync); sync();
+    }
     const imgInput = form.elements.image_url;
     const setThumb = url => { const th = $('[data-thumb]', form); if (th) th.innerHTML = url ? `<img src="${esc(url)}" alt="">` : '<span class="small muted" style="display:grid;place-items:center;height:100%;text-align:center">Stock photo</span>'; };
     if (imgInput) imgInput.oninput = () => setThumb(imgInput.value);

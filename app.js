@@ -106,7 +106,9 @@ async function getItem(kind, id) {
 const itemLabel = async (kind, item) => {
   if (kind === 'rv') return item.name;
   const cg = item.campground_id && await db.prepare('SELECT name FROM campgrounds WHERE id = ?').get(item.campground_id);
-  return `RV Site ${item.code}${cg ? ' · ' + cg.name : ''}`;
+  if (cg) return `RV Site ${item.code} · ${cg.name}`;
+  // Standalone site: its own listing name, or the site number and town.
+  return item.name || `RV Site ${item.code}${item.location ? ' · ' + item.location : ''}`;
 };
 
 // Nights an RV or site can't be booked: live bookings plus dates staff blocked (maintenance, owner use).
@@ -185,7 +187,7 @@ async function createBooking(body, { admin = false } = {}) {
   const kind = body.kind;
   const item = await getItem(kind, body.item_id);
   if (item.status !== 'active') throw new HttpError(409, `This ${kind === 'rv' ? 'RV' : 'site'} is not available for booking right now.`);
-  if (kind === 'lot' && !admin && !await activeCampground(item.campground_id)) throw new HttpError(409, 'This campground is not taking bookings right now.');
+  if (kind === 'lot' && !admin && item.campground_id && !await activeCampground(item.campground_id)) throw new HttpError(409, 'This campground is not taking bookings right now.');
   const name = str(body.name, 120), email = str(body.email, 160).toLowerCase(), phone = str(body.phone, 40);
   if (name.length < 2) throw new HttpError(400, 'Please enter your full name.');
   if (!EMAIL_RE.test(email)) throw new HttpError(400, 'Please enter a valid email address.');
@@ -349,8 +351,9 @@ api.get('/rvs/:id', async (req, res) => {
 });
 
 // RV sites (pads) belong to campgrounds. Only active campgrounds and open sites are public.
-const LOTS_SQL = `SELECT l.*, c.name AS campground_name, c.location AS campground_location FROM lots l
-  JOIN campgrounds c ON c.id = l.campground_id WHERE l.status != 'closed' AND c.status = 'active'`;
+// RV sites that are open and either standalone or in an active campground. Standalone sites use their own location.
+const LOTS_SQL = `SELECT l.*, c.name AS campground_name, COALESCE(c.location, l.location) AS campground_location FROM lots l
+  LEFT JOIN campgrounds c ON c.id = l.campground_id WHERE l.status != 'closed' AND (l.campground_id IS NULL OR c.status = 'active')`;
 async function withAvailability(rows, start, end) {
   const dated = isDate(start) && isDate(end) && end > start;
   const today = todayStr();
@@ -383,15 +386,17 @@ api.get('/campgrounds/:id', async (req, res) => {
 });
 api.get('/lots', async (req, res) => {
   const cg = Number(req.query.campground) || 0;
-  const rows = cg ? await db.prepare(`${LOTS_SQL} AND l.campground_id = ? ORDER BY l.code`).all(cg) : await db.prepare(`${LOTS_SQL} ORDER BY c.sort_order, c.name, l.code`).all();
+  const rows = cg ? await db.prepare(`${LOTS_SQL} AND l.campground_id = ? ORDER BY l.code`).all(cg) : await db.prepare(`${LOTS_SQL} ORDER BY l.campground_id IS NOT NULL, c.sort_order, c.name, l.code`).all();
   res.json(await withAvailability(rows, req.query.start, req.query.end));
 });
 api.get('/lots/:id', async (req, res) => {
   const lot = await getItem('lot', req.params.id);
-  const c = await activeCampground(lot.campground_id);
-  if (lot.status === 'closed' || !c) throw new HttpError(404, 'Site not found.');
+  const c = lot.campground_id ? await activeCampground(lot.campground_id) : null;
+  if (lot.status === 'closed' || (lot.campground_id && !c)) throw new HttpError(404, 'Site not found.');
+  const booked = await bookedRanges('lot', lot.id);
+  if (!c) return res.json({ ...lot, campground_name: null, campground_location: lot.location, campground: null, booked });
   const { amenities, ...camp } = hydrate(c);
-  res.json({ ...lot, campground_name: c.name, campground_location: c.location, campground: { ...camp, amenities }, booked: await bookedRanges('lot', lot.id) });
+  res.json({ ...lot, campground_name: c.name, campground_location: c.location, campground: { ...camp, amenities }, booked });
 });
 
 api.get('/sales', async (req, res) => {
@@ -694,9 +699,13 @@ const SCHEMAS = {
   },
   lots: {
     label: 'RV Sites', title: 'code', fields: [
-      { key: 'campground_id', label: 'Campground', type: 'ref', ref: 'campgrounds', required: true },
-      { key: 'code', label: 'Site / pad number (e.g. A-01)', type: 'text', required: true },
-      { key: 'section', label: 'Section / row (e.g. Lakefront)', type: 'text', required: true },
+      { key: 'campground_id', label: 'Campground', type: 'ref', ref: 'campgrounds', none: 'Standalone site (not part of a campground)' },
+      { key: 'name', label: 'Listing name (e.g. Private Full-Hookup RV Site in Oro Valley)', type: 'text', standalone: true },
+      { key: 'location', label: 'City, state (e.g. Oro Valley, AZ)', type: 'text', standalone: true },
+      { key: 'address', label: 'Street address (shown with a map link)', type: 'text', standalone: true },
+      { key: 'amenities', label: 'Amenities (one per line)', type: 'list', standalone: true },
+      { key: 'code', label: 'Site / pad number (e.g. A-01)', type: 'text', required: true, campOnly: true },
+      { key: 'section', label: 'Section / row (e.g. Lakefront)', type: 'text', required: true, campOnly: true },
       { key: 'site_type', label: 'Site type', type: 'select', options: ['Back-in', 'Pull-through', 'Premium'] },
       { key: 'max_length', label: 'Max rig length (ft)', type: 'int' },
       { key: 'amps', label: 'Electric', type: 'select', options: ['30', '50', '30/50'] },
@@ -822,7 +831,8 @@ admin.get('/stats', async (req, res) => {
 });
 
 const BOOKINGS_SQL = `SELECT b.*, CASE b.kind WHEN 'rv' THEN (SELECT name FROM rvs WHERE id = b.item_id)
-  ELSE (SELECT 'Site ' || l.code || COALESCE(' · ' || c.name, '') FROM lots l LEFT JOIN campgrounds c ON c.id = l.campground_id WHERE l.id = b.item_id) END AS item_name FROM bookings b`;
+  ELSE (SELECT COALESCE(CASE WHEN c.id IS NULL THEN NULLIF(l.name, '') END, 'Site ' || l.code || COALESCE(' · ' || c.name, ' · ' || l.location, ''))
+    FROM lots l LEFT JOIN campgrounds c ON c.id = l.campground_id WHERE l.id = b.item_id) END AS item_name FROM bookings b`;
 admin.get('/bookings', async (req, res) => {
   res.json((await db.prepare(`${BOOKINGS_SQL} ORDER BY b.start_date DESC`).all()).map(hydrate));
 });
@@ -959,7 +969,7 @@ admin.get('/export/bookings.csv', async (req, res) => {
 
 for (const [resource, schema] of Object.entries(SCHEMAS)) {
   const LIST_SQL = {
-    lots: 'SELECT l.*, c.name AS campground_name FROM lots l LEFT JOIN campgrounds c ON c.id = l.campground_id ORDER BY c.sort_order, c.name, l.code',
+    lots: 'SELECT l.*, c.name AS campground_name FROM lots l LEFT JOIN campgrounds c ON c.id = l.campground_id ORDER BY l.campground_id IS NULL, c.sort_order, c.name, l.code',
     testimonials: "SELECT * FROM testimonials ORDER BY status = 'pending' DESC, created_at DESC",
     campgrounds: `SELECT c.*, (SELECT COUNT(*) FROM lots l WHERE l.campground_id = c.id) AS pad_count,
       (SELECT MIN(nightly_rate) FROM lots l WHERE l.campground_id = c.id AND l.status = 'active') AS from_rate FROM campgrounds c ORDER BY c.sort_order, c.name`
@@ -968,6 +978,7 @@ for (const [resource, schema] of Object.entries(SCHEMAS)) {
     .map(r => ({ ...hydrate(r), ...(r.source_url !== undefined ? { source_url: r.source_url } : {}) }))));
   admin.post(`/${resource}`, async (req, res) => {
     const rec = await buildRecord(schema, req.body || {}, false);
+    if (resource === 'lots' && !rec.campground_id && !rec.location) throw new HttpError(400, 'A standalone site needs its city and state (e.g. Oro Valley, AZ).');
     if (resource === 'sales' && rec.status === 'sold') rec.sold_at = todayStr();
     const keys = Object.keys(rec);
     try {
@@ -983,6 +994,8 @@ for (const [resource, schema] of Object.entries(SCHEMAS)) {
     const existing = await db.prepare(`SELECT * FROM ${resource} WHERE id = ?`).get(id);
     if (!existing) throw new HttpError(404, 'Not found.');
     const rec = await buildRecord(schema, req.body || {}, true);
+    const after = { ...existing, ...rec };
+    if (resource === 'lots' && !after.campground_id && !after.location) throw new HttpError(400, 'A standalone site needs its city and state (e.g. Oro Valley, AZ).');
     if (resource === 'sales') {
       if (rec.status === 'sold' && existing.status !== 'sold') rec.sold_at = todayStr();
       if (rec.status && rec.status !== 'sold') rec.sold_at = null;
